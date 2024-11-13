@@ -7,9 +7,12 @@
 
 
 import SwiftUI
+import SwiftData
 
 struct OnboardingView: View {
+    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
     @State private var currentPage = 0
+    
     private let pages = [
         OnboardingPage(
             title: "Track Your Caffeine",
@@ -73,8 +76,14 @@ struct OnboardingView: View {
             if currentPage < pages.count - 1 {
                 currentPage += 1
             } else {
-                // Handle onboarding completion
+                completeOnboarding()
             }
+        }
+    }
+    
+    private func completeOnboarding() {
+        withAnimation {
+            hasSeenOnboarding = true
         }
     }
     
@@ -87,11 +96,6 @@ struct OnboardingView: View {
     }
 }
 
-struct OnboardingPage {
-    let title: String
-    let subtitle: String
-    let imageName: String
-}
 
 struct OnboardingPageView: View {
     let page: OnboardingPage
@@ -108,11 +112,12 @@ struct OnboardingPageView: View {
             Text(page.title)
                 .font(.title)
                 .bold()
+                .foregroundColor(.primary)
             
             Text(page.subtitle)
                 .font(.body)
                 .multilineTextAlignment(.center)
-                .foregroundColor(.secondary)
+                .foregroundColor(.primary)
                 .padding(.horizontal)
             
             Spacer()
@@ -130,6 +135,8 @@ struct PageControl: View {
                 Circle()
                     .fill(page == currentPage ? Color.accentColor : Color.gray.opacity(0.5))
                     .frame(width: 8, height: 8)
+                    .frame(width: 10, height: 10) // Increase size for better visibility on larger screens
+                    .padding(.top, 8) // Adjust positioning
             }
         }
     }
