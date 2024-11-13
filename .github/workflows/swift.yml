@@ -24,7 +24,7 @@ jobs:
         xcodebuild clean build \
           -project Decaff.xcodeproj \
           -scheme Decaff \
-          -destination 'platform=iOS Simulator,name=iPhone 14 Pro,OS=latest' \
+          -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
           CODE_SIGNING_ALLOWED=NO
 
     - name: Run Tests
