@@ -17,41 +17,145 @@ struct AddBeverageView: View {
     @State private var volume: Double = 250
     @State private var isCustomBeverage = false
     @State private var customCaffeineAmount: Double = 0
+    @State private var searchText = ""
+    
+    private var filteredBeverages: [CSVBeverage] {
+        CSVParser.shared.searchBeverages(searchText)
+    }
     
     var body: some View {
         NavigationView {
             Form {
-                if !isCustomBeverage {
-                    Picker("Beverage Type", selection: $selectedBeverage) {
+                Section(header: Text("Search Beverages")) {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.gray)
+                        TextField("Search drinks...", text: $searchText)
+                    }
+                    
+                    if !searchText.isEmpty {
+                        if filteredBeverages.isEmpty {
+                            HStack {
+                                Image(systemName: "exclamationmark.circle")
+                                    .foregroundColor(.secondary)
+                                Text("No matches found")
+                                    .foregroundColor(.secondary)
+                            }
+                        } else {
+                            ForEach(filteredBeverages) { beverage in
+                                Button(action: { selectCSVBeverage(beverage) }) {
+                                    HStack {
+                                        Image(systemName: beverageIcon(for: beverage.type))
+                                            .foregroundColor(.accentColor)
+                                            .frame(width: 30)
+                                        
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(beverage.name)
+                                                .foregroundColor(.primary)
+                                            HStack {
+                                                Text("\(beverage.caffeineContent) mg")
+                                                    .foregroundColor(.secondary)
+                                                Text("•")
+                                                    .foregroundColor(.secondary)
+                                                Text("\(Int(round(beverage.servingSizeML))) ml")
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            .font(.caption)
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        Image(systemName: "plus.circle.fill")
+                                            .foregroundColor(.accentColor)
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+                    }
+                }
+                
+                if !isCustomBeverage && searchText.isEmpty {
+                    Section(header: Text("Common Drinks")) {
                         ForEach(PresetBeverage.allCases) { beverage in
-                            Text(beverage.name).tag(beverage)
+                            Button(action: { selectedBeverage = beverage }) {
+                                HStack {
+                                    Image(systemName: beverageIcon(for: beverage.type))
+                                        .foregroundColor(.accentColor)
+                                        .frame(width: 30)
+                                    
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(beverage.name)
+                                            .foregroundColor(.primary)
+                                        HStack {
+                                            Text("\(Int(beverage.caffeineAmount)) mg")
+                                                .foregroundColor(.secondary)
+                                            Text("•")
+                                                .foregroundColor(.secondary)
+                                            Text("250 ml")
+                                                .foregroundColor(.secondary)
+                                        }
+                                        .font(.caption)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    if selectedBeverage == beverage {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.accentColor)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 4)
                         }
                     }
                 }
                 
                 if isCustomBeverage {
-                    TextField("Beverage Name", text: $customBeverageName)
-                    
-                    HStack {
-                        Text("Caffeine Amount")
-                        Spacer()
-                        TextField("mg", value: $customCaffeineAmount, format: .number)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                        Text("mg")
+                    Section(header: Text("Custom Beverage")) {
+                        HStack {
+                            Image(systemName: "cup.and.saucer")
+                                .foregroundColor(.accentColor)
+                                .frame(width: 30)
+                            TextField("Beverage Name", text: $customBeverageName)
+                        }
+                        
+                        HStack {
+                            Image(systemName: "bolt.fill")
+                                .foregroundColor(.accentColor)
+                                .frame(width: 30)
+                            Text("Caffeine")
+                            Spacer()
+                            TextField("mg", value: $customCaffeineAmount, format: .number)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing)
+                            Text("mg")
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
                 
-                HStack {
-                    Text("Volume")
-                    Spacer()
-                    TextField("ml", value: $volume, format: .number)
-                        .keyboardType(.numberPad)
-                        .multilineTextAlignment(.trailing)
-                    Text("ml")
+                Section(header: Text("Volume")) {
+                    VStack {
+                        HStack {
+                            Image(systemName: "drop.fill")
+                                .foregroundColor(.accentColor)
+                                .frame(width: 30)
+                            Text("Amount")
+                            Spacer()
+                            Text("\(Int(round(volume))) ml")
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Slider(value: $volume, in: 50...500, step: 50)
+                    }
                 }
                 
-                Toggle("Custom Beverage", isOn: $isCustomBeverage)
+                if searchText.isEmpty {
+                    Section {
+                        Toggle("Custom Beverage", isOn: $isCustomBeverage)
+                    }
+                }
             }
             .navigationTitle("Add Beverage")
             .navigationBarTitleDisplayMode(.inline)
@@ -61,9 +165,33 @@ struct AddBeverageView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") { addEntry() }
+                        .disabled(isCustomBeverage && customBeverageName.isEmpty)
                 }
             }
         }
+    }
+    
+    private func beverageIcon(for type: BeverageType) -> String {
+        switch type {
+        case .coffee:
+            return "cup.and.saucer.fill"
+        case .tea:
+            return "leaf.fill"
+        case .energyDrink:
+            return "bolt.fill"
+        case .soda:
+            return "bubbles.and.sparkles"
+        case .custom:
+            return "cup.and.saucer"
+        }
+    }
+    
+    private func selectCSVBeverage(_ beverage: CSVBeverage) {
+        customBeverageName = beverage.name
+        customCaffeineAmount = Double(beverage.caffeineContent)
+        volume = beverage.servingSizeML
+        isCustomBeverage = true
+        searchText = ""
     }
     
     private func addEntry() {

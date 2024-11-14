@@ -11,22 +11,52 @@ struct MainView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var entries: [CaffeineEntry]
     @State private var showingAddEntry = false
+    @State private var showingBarcodeScanner = false
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
+                    // Quick Add Buttons
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 15) {
+                            QuickAddButton(title: "Coffee", icon: "cup.and.saucer.fill") {
+                                quickAdd(.coffee)
+                            }
+                            QuickAddButton(title: "Tea", icon: "leaf.fill") {
+                                quickAdd(.tea)
+                            }
+                            QuickAddButton(title: "Energy Drink", icon: "bolt.fill") {
+                                quickAdd(.energyDrink)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                    
                     CaffeineStatsCard(entries: entries)
                     CaffeineMetabolismGraph(entries: entries)
                     
-                    Button(action: { showingAddEntry = true }) {
-                        Label("Add Beverage", systemImage: "plus.circle.fill")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.accentColor)
-                            .cornerRadius(10)
+                    // Add Beverage Buttons
+                    HStack {
+                        Button(action: { showingAddEntry = true }) {
+                            Label("Add Beverage", systemImage: "plus.circle.fill")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.accentColor)
+                                .cornerRadius(10)
+                        }
+                        
+                        Button(action: { showingBarcodeScanner = true }) {
+                            Image(systemName: "barcode.viewfinder")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .frame(width: 50)
+                                .padding()
+                                .background(Color.accentColor)
+                                .cornerRadius(10)
+                        }
                     }
                     .padding(.horizontal)
                     
@@ -38,7 +68,42 @@ struct MainView: View {
             .sheet(isPresented: $showingAddEntry) {
                 AddBeverageView()
             }
+            .sheet(isPresented: $showingBarcodeScanner) {
+                // TODO: Implement BarcodeScanner
+                Text("Barcode Scanner Coming Soon")
+            }
         }
+    }
+    
+    private func quickAdd(_ beverageType: PresetBeverage) {
+        let entry = CaffeineEntry(
+            caffeineAmount: beverageType.caffeineAmount,
+            beverageName: beverageType.name,
+            beverageType: beverageType.type,
+            volume: 250
+        )
+        modelContext.insert(entry)
+    }
+}
+
+struct QuickAddButton: View {
+    let title: String
+    let icon: String
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack {
+                Image(systemName: icon)
+                    .font(.system(size: 24))
+                Text(title)
+                    .font(.caption)
+            }
+            .frame(width: 80, height: 80)
+            .background(Color.accentColor.opacity(0.1))
+            .cornerRadius(15)
+        }
+        .foregroundColor(.accentColor)
     }
 }
 
