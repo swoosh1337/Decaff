@@ -138,6 +138,7 @@ struct CaffeineStatsCard: View {
 }
 
 struct TodayEntriesList: View {
+    @Environment(\.modelContext) private var modelContext
     let entries: [CaffeineEntry]
     
     private var todayEntries: [CaffeineEntry] {
@@ -156,9 +157,22 @@ struct TodayEntriesList: View {
                     .foregroundColor(.secondary)
                     .padding()
             } else {
-                ForEach(todayEntries) { entry in
-                    EntryRow(entry: entry)
+                List {
+                    ForEach(todayEntries) { entry in
+                        EntryRow(entry: entry)
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    deleteEntry(entry)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                    }
                 }
+                .listStyle(.plain)
+                .frame(minHeight: CGFloat(todayEntries.count * 60))
             }
         }
         .padding()
@@ -166,35 +180,15 @@ struct TodayEntriesList: View {
         .cornerRadius(12)
         .shadow(radius: 2)
     }
+    
+    private func deleteEntry(_ entry: CaffeineEntry) {
+        withAnimation {
+            modelContext.delete(entry)
+            try? modelContext.save()
+        }
+    }
 }
 
-//struct EntryRow: View {
-//    let entry: CaffeineEntry
-//    
-//    var body: some View {
-//        HStack {
-//            VStack(alignment: .leading) {
-//                Text(entry.beverageName)
-//                    .font(.headline)
-//                Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
-//                    .font(.caption)
-//                    .foregroundColor(.secondary)
-//            }
-//            
-//            Spacer()
-//            
-//            VStack(alignment: .trailing) {
-//                Text("\(Int(entry.caffeineAmount)) mg")
-//                    .font(.subheadline)
-//                    .foregroundColor(.secondary)
-//                Text("\(Int(entry.volume)) ml")
-//                    .font(.caption)
-//                    .foregroundColor(.secondary)
-//            }
-//        }
-//        .padding(.vertical, 8)
-//    }
-//}
 
 #Preview {
     MainView()

@@ -38,8 +38,7 @@ class CSVParser {
                 let caffeineContent = Int(columns[2]) ?? 0
                 let typeString = columns[3].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
                 
-                // Parse serving size to ML
-                let servingSizeML = parseServingSize(servingSize)
+                let rawServingSizeML = parseServingSize(servingSize)
                 
                 // Determine beverage type
                 let type = determineBeverageType(typeString)
@@ -48,7 +47,7 @@ class CSVParser {
                     name: name,
                     caffeineContent: caffeineContent,
                     servingSize: servingSize,
-                    servingSizeML: servingSizeML,
+                    servingSizeML: rawServingSizeML,
                     type: type
                 )
                 beverages.append(beverage)
@@ -63,20 +62,19 @@ class CSVParser {
         // Remove all whitespace and convert to lowercase
         let cleanSize = size.lowercased().replacingOccurrences(of: " ", with: "")
         
-        // Extract number and unit
-        let numbers = cleanSize.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
-        guard let value = Double(numbers) else { return 0 }
-        
-        // Convert to ML based on unit
-        if cleanSize.contains("oz") {
-            return value * 29.5735 // 1 oz = 29.5735 ml
-        } else if cleanSize.contains("ml") {
-            return value
-        } else if cleanSize.contains("cup") {
-            return value * 236.588 // 1 cup = 236.588 ml
+        // First try to extract decimal number if it exists
+        if let value = Double(cleanSize.components(separatedBy: CharacterSet.letters).joined()) {
+            if cleanSize.contains("oz") {
+                return round(value * 29.5735) // 1 oz = 29.5735 ml
+            } else if cleanSize.contains("ml") {
+                return round(value)
+            } else if cleanSize.contains("cup") {
+                return round(value * 236.588) // 1 cup = 236.588 ml
+            }
+            return round(value)
         }
         
-        return value // default to ml if no unit specified
+        return 0 // Return 0 if no valid number found
     }
     
     private func determineBeverageType(_ type: String) -> BeverageType {

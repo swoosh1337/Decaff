@@ -23,6 +23,14 @@ struct AddBeverageView: View {
         CSVParser.shared.searchBeverages(searchText)
     }
     
+    private func beverageIcon(for type: BeverageType, name: String = "") -> String {
+        return BeverageIcons.iconFor(name: name, type: type)
+    }
+    
+    private func formatVolume(_ volume: Double) -> String {
+        return "\(Int(round(volume))) ml"
+    }
+    
     var body: some View {
         NavigationView {
             Form {
@@ -45,7 +53,7 @@ struct AddBeverageView: View {
                             ForEach(filteredBeverages) { beverage in
                                 Button(action: { selectCSVBeverage(beverage) }) {
                                     HStack {
-                                        Image(systemName: beverageIcon(for: beverage.type))
+                                        Image(systemName: beverageIcon(for: beverage.type, name: beverage.name))
                                             .foregroundColor(.accentColor)
                                             .frame(width: 30)
                                         
@@ -53,11 +61,11 @@ struct AddBeverageView: View {
                                             Text(beverage.name)
                                                 .foregroundColor(.primary)
                                             HStack {
-                                                Text("\(beverage.caffeineContent) mg")
+                                                Text("\(Int(beverage.caffeineContent)) mg")
                                                     .foregroundColor(.secondary)
                                                 Text("•")
                                                     .foregroundColor(.secondary)
-                                                Text("\(Int(round(beverage.servingSizeML))) ml")
+                                                Text(formatVolume(beverage.servingSizeML))
                                                     .foregroundColor(.secondary)
                                             }
                                             .font(.caption)
@@ -143,7 +151,7 @@ struct AddBeverageView: View {
                                 .frame(width: 30)
                             Text("Amount")
                             Spacer()
-                            Text("\(Int(round(volume))) ml")
+                            Text(formatVolume(volume))
                                 .foregroundColor(.secondary)
                         }
                         
@@ -171,25 +179,10 @@ struct AddBeverageView: View {
         }
     }
     
-    private func beverageIcon(for type: BeverageType) -> String {
-        switch type {
-        case .coffee:
-            return "cup.and.saucer.fill"
-        case .tea:
-            return "leaf.fill"
-        case .energyDrink:
-            return "bolt.fill"
-        case .soda:
-            return "bubbles.and.sparkles"
-        case .custom:
-            return "cup.and.saucer"
-        }
-    }
-    
     private func selectCSVBeverage(_ beverage: CSVBeverage) {
         customBeverageName = beverage.name
         customCaffeineAmount = Double(beverage.caffeineContent)
-        volume = beverage.servingSizeML
+        volume = round(beverage.servingSizeML / 50) * 50
         isCustomBeverage = true
         searchText = ""
     }

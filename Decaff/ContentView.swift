@@ -42,3 +42,8 @@ struct ContentView: View {
     }
 }
 
+#Preview {
+    ContentView()
+        .modelContainer(for: [CaffeineEntry.self], inMemory: true)
+}
+
