@@ -96,14 +96,32 @@ class BarcodeAPI {
     private init() {}
     
     func fetchProduct(barcode: String) async throws -> BarcodeProduct? {
-        // TODO: Implement actual API call to Open Food Facts or similar
-        // For now, return mock data
-        return BarcodeProduct(
-            name: "Red Bull Energy Drink",
-            caffeineContent: 80,
-            servingSize: 250,
-            imageURL: URL(string: "https://example.com/redbull.jpg"),
-            barcode: barcode
-        )
+        // Mock data for testing
+        switch barcode {
+        case "5449000000996":  // Regular Coca-Cola
+            return BarcodeProduct(
+                name: "Coca-Cola Classic",
+                caffeineContent: 32,
+                servingSize: 330,
+                imageURL: URL(string: "https://world.openfoodfacts.org/images/products/544/900/000/0996/front_en.248.400.jpg"),
+                barcode: barcode
+            )
+        case "9002490100070":  // Red Bull
+            return BarcodeProduct(
+                name: "Red Bull Energy Drink",
+                caffeineContent: 80,
+                servingSize: 250,
+                imageURL: URL(string: "https://world.openfoodfacts.org/images/products/900/249/010/0070/front_en.191.400.jpg"),
+                barcode: barcode
+            )
+        default:  // Generic energy drink
+            return BarcodeProduct(
+                name: "Energy Drink",
+                caffeineContent: 80,
+                servingSize: 250,
+                imageURL: nil,
+                barcode: barcode
+            )
+        }
     }
 } 

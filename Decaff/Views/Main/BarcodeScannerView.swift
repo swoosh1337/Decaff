@@ -54,13 +54,14 @@ struct BarcodeScannerView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingProductInfo) {
+        .fullScreenCover(isPresented: $showingProductInfo) {
             if let product = scannedProduct {
                 ProductInfoView(product: product, dismiss: dismiss)
             }
         }
         .onChange(of: scannerModel.scannedCode) { _, newCode in
             guard let code = newCode else { return }
+            print("Barcode scanned: \(code)")
             handleScannedCode(code)
         }
         .onAppear {
@@ -72,13 +73,15 @@ struct BarcodeScannerView: View {
     }
     
     private func handleScannedCode(_ code: String) {
-        // Temporarily using mock data - replace with actual API call
+        print("Handling scanned code: \(code)")
         Task {
             do {
                 if let product = try await BarcodeAPI.shared.fetchProduct(barcode: code) {
+                    print("Product found: \(product.name)")
                     await MainActor.run {
-                        scannedProduct = product
-                        showingProductInfo = true
+                        self.scannedProduct = product
+                        self.showingProductInfo = true
+                        print("Showing product info sheet")
                     }
                 }
             } catch {
@@ -124,43 +127,82 @@ struct ProductInfoView: View {
     let product: BarcodeProduct
     let dismiss: DismissAction
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismissSheet
     
     var body: some View {
         NavigationView {
-            Form {
+            List {
                 Section {
-                    HStack {
-                        AsyncImage(url: product.imageURL) { image in
-                            image.resizable()
-                                .aspectRatio(contentMode: .fit)
-                        } placeholder: {
-                            ProgressView()
+                    VStack(alignment: .center, spacing: 16) {
+                        // Product Image
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(colorScheme == .dark ? Color.gray.opacity(0.2) : Color.gray.opacity(0.1))
+                            
+                            AsyncImage(url: product.imageURL) { image in
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                            } placeholder: {
+                                Image(systemName: "cup.and.saucer.fill")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.gray)
+                            }
                         }
-                        .frame(width: 100, height: 100)
+                        .frame(height: 200)
                         
-                        VStack(alignment: .leading) {
+                        // Product Details
+                        VStack(spacing: 8) {
                             Text(product.name)
-                                .font(.headline)
-                            Text("\(product.caffeineContent) mg caffeine")
-                                .foregroundColor(.secondary)
-                            Text("\(product.servingSize) ml")
-                                .foregroundColor(.secondary)
+                                .font(.title2)
+                                .bold()
+                                .multilineTextAlignment(.center)
+                            
+                            HStack(spacing: 20) {
+                                InfoCard(
+                                    title: "Caffeine",
+                                    value: "\(product.caffeineContent)",
+                                    unit: "mg",
+                                    icon: "bolt.fill"
+                                )
+                                
+                                InfoCard(
+                                    title: "Volume",
+                                    value: "\(product.servingSize)",
+                                    unit: "ml",
+                                    icon: "drop.fill"
+                                )
+                            }
                         }
                     }
+                    .padding(.vertical)
+                    .listRowInsets(EdgeInsets())
                 }
                 
                 Section {
-                    Button("Add to Today's Log") {
+                    Button(action: {
                         addToLog()
+                        dismissSheet()
                         dismiss()
+                    }) {
+                        HStack {
+                            Spacer()
+                            Label("Add to Today's Log", systemImage: "plus.circle.fill")
+                                .font(.headline)
+                            Spacer()
+                        }
                     }
                 }
             }
-            .navigationTitle("Product Details")
+            .navigationTitle("Scanned Product")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        dismissSheet()
+                        dismiss()
+                    }
                 }
             }
         }
@@ -174,6 +216,41 @@ struct ProductInfoView: View {
             volume: Double(product.servingSize)
         )
         modelContext.insert(entry)
+        try? modelContext.save()
+        print("Added entry to log: \(product.name)")
+    }
+}
+
+struct InfoCard: View {
+    let title: String
+    let value: String
+    let unit: String
+    let icon: String
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 24))
+                .foregroundColor(.accentColor)
+            
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.title3)
+                    .bold()
+                Text(unit)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(radius: 2)
     }
 } 
 
