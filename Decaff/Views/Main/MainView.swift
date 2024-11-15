@@ -69,8 +69,7 @@ struct MainView: View {
                 AddBeverageView()
             }
             .sheet(isPresented: $showingBarcodeScanner) {
-                // TODO: Implement BarcodeScanner
-                Text("Barcode Scanner Coming Soon")
+                BarcodeScannerView()
             }
         }
     }
