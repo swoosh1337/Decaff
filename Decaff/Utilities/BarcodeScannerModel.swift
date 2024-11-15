@@ -8,6 +8,7 @@ class BarcodeScannerModel: NSObject, ObservableObject {
     @Published var error: Error?
     
     let session = AVCaptureSession()
+    private let metadataQueue = DispatchQueue(label: "com.decaff.barcodescanner.metadata")
     private var cancellables = Set<AnyCancellable>()
     
     override init() {
@@ -38,7 +39,7 @@ class BarcodeScannerModel: NSObject, ObservableObject {
             let output = AVCaptureMetadataOutput()
             if session.canAddOutput(output) {
                 session.addOutput(output)
-                output.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
+                output.setMetadataObjectsDelegate(self, queue: metadataQueue)
                 output.metadataObjectTypes = [.ean8, .ean13, .upce]
                 print("Added metadata output")
             }
@@ -67,7 +68,9 @@ class BarcodeScannerModel: NSObject, ObservableObject {
     func stopScanning() {
         print("Stopping scanning session")
         session.stopRunning()
-        isScanning = false
+        DispatchQueue.main.async { [weak self] in
+            self?.isScanning = false
+        }
     }
 }
 
@@ -76,13 +79,16 @@ extension BarcodeScannerModel: AVCaptureMetadataOutputObjectsDelegate {
         if let metadataObject = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
            let code = metadataObject.stringValue {
             print("Barcode detected: \(code)")
-            scannedCode = code
-            stopScanning()
+            DispatchQueue.main.async { [weak self] in
+                self?.scannedCode = code
+                self?.stopScanning()
+            }
         }
     }
 }
 
-struct BarcodeProduct {
+struct BarcodeProduct: Identifiable {
+    let id = UUID()
     let name: String
     let caffeineContent: Int
     let servingSize: Int
@@ -96,10 +102,13 @@ class BarcodeAPI {
     private init() {}
     
     func fetchProduct(barcode: String) async throws -> BarcodeProduct? {
+        print("🔍 Fetching product for barcode: \(barcode)")
+        
         // Mock data for testing
+        let product: BarcodeProduct
         switch barcode {
         case "5449000000996":  // Regular Coca-Cola
-            return BarcodeProduct(
+            product = BarcodeProduct(
                 name: "Coca-Cola Classic",
                 caffeineContent: 32,
                 servingSize: 330,
@@ -107,7 +116,7 @@ class BarcodeAPI {
                 barcode: barcode
             )
         case "9002490100070":  // Red Bull
-            return BarcodeProduct(
+            product = BarcodeProduct(
                 name: "Red Bull Energy Drink",
                 caffeineContent: 80,
                 servingSize: 250,
@@ -115,7 +124,7 @@ class BarcodeAPI {
                 barcode: barcode
             )
         default:  // Generic energy drink
-            return BarcodeProduct(
+            product = BarcodeProduct(
                 name: "Energy Drink",
                 caffeineContent: 80,
                 servingSize: 250,
@@ -123,5 +132,8 @@ class BarcodeAPI {
                 barcode: barcode
             )
         }
+        
+        print("📦 Product found: \(product.name)")
+        return product
     }
 } 

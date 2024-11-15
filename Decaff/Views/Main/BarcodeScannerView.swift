@@ -3,9 +3,11 @@ import AVFoundation
 
 struct BarcodeScannerView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @StateObject private var scannerModel = BarcodeScannerModel()
-    @State private var showingProductInfo = false
-    @State private var scannedProduct: BarcodeProduct?
+    @State private var selectedProduct: BarcodeProduct?
+    @State private var showError = false
+    @State private var errorMessage = ""
     
     var body: some View {
         NavigationView {
@@ -54,40 +56,90 @@ struct BarcodeScannerView: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showingProductInfo) {
-            if let product = scannedProduct {
-                ProductInfoView(product: product, dismiss: dismiss)
+        .sheet(item: $selectedProduct) { product in
+            // Simple ProductInfoView for testing
+            NavigationView {
+                VStack(spacing: 20) {
+                    Text("Product Details")
+                        .font(.title)
+                    
+                    Text("Name: \(product.name)")
+                    Text("Caffeine: \(product.caffeineContent)mg")
+                    Text("Size: \(product.servingSize)ml")
+                    Text("Barcode: \(product.barcode)")
+                    
+                    Button("Add to Log") {
+                        addToLog(product: product)
+                        dismiss()
+                    }
+                    .padding()
+                    .background(Color.accentColor)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .padding()
+                .navigationBarItems(trailing: Button("Close") {
+                    selectedProduct = nil
+                })
             }
+        }
+        .alert("Error", isPresented: $showError) {
+            Button("OK") { }
+        } message: {
+            Text(errorMessage)
         }
         .onChange(of: scannerModel.scannedCode) { _, newCode in
             guard let code = newCode else { return }
-            print("Barcode scanned: \(code)")
+            print("📱 Barcode scanned: \(code)")
             handleScannedCode(code)
         }
         .onAppear {
+            print("📸 Scanner view appeared")
             scannerModel.startScanning()
         }
         .onDisappear {
+            print("🚫 Scanner view disappeared")
             scannerModel.stopScanning()
         }
     }
     
     private func handleScannedCode(_ code: String) {
-        print("Handling scanned code: \(code)")
+        print("🎯 Handling scanned code: \(code)")
         Task {
             do {
                 if let product = try await BarcodeAPI.shared.fetchProduct(barcode: code) {
-                    print("Product found: \(product.name)")
+                    print("✅ Product fetched successfully: \(product.name)")
                     await MainActor.run {
-                        self.scannedProduct = product
-                        self.showingProductInfo = true
-                        print("Showing product info sheet")
+                        self.selectedProduct = product
+                        print("💾 Product assigned to state")
+                    }
+                } else {
+                    await MainActor.run {
+                        showError = true
+                        errorMessage = "Product not found"
                     }
                 }
             } catch {
-                print("Error fetching product: \(error)")
+                print("❌ Error fetching product: \(error)")
+                await MainActor.run {
+                    showError = true
+                    errorMessage = error.localizedDescription
+                }
             }
         }
+    }
+    
+    private func addToLog(product: BarcodeProduct) {
+        print("📝 Adding product to log: \(product.name)")
+        let entry = CaffeineEntry(
+            caffeineAmount: Double(product.caffeineContent),
+            beverageName: product.name,
+            beverageType: .custom,
+            volume: Double(product.servingSize)
+        )
+        modelContext.insert(entry)
+        try? modelContext.save()
+        print("✅ Entry added to log")
     }
 }
 
