@@ -5,7 +5,6 @@ struct BarcodeScannerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @StateObject private var scannerModel = BarcodeScannerModel()
-    @State private var selectedProduct: BarcodeProduct?
     @State private var showError = false
     @State private var errorMessage = ""
     
@@ -56,42 +55,17 @@ struct BarcodeScannerView: View {
                 }
             }
         }
-        .sheet(item: $selectedProduct) { product in
-            // Simple ProductInfoView for testing
-            NavigationView {
-                VStack(spacing: 20) {
-                    Text("Product Details")
-                        .font(.title)
-                    
-                    Text("Name: \(product.name)")
-                    Text("Caffeine: \(product.caffeineContent)mg")
-                    Text("Size: \(product.servingSize)ml")
-                    Text("Barcode: \(product.barcode)")
-                    
-                    Button("Add to Log") {
-                        addToLog(product: product)
-                        dismiss()
-                    }
-                    .padding()
-                    .background(Color.accentColor)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-                }
-                .padding()
-                .navigationBarItems(trailing: Button("Close") {
-                    selectedProduct = nil
-                })
-            }
+        .sheet(item: $scannerModel.currentProduct) { product in
+            ProductInfoView(product: product, dismiss: dismiss)
         }
         .alert("Error", isPresented: $showError) {
             Button("OK") { }
         } message: {
             Text(errorMessage)
         }
-        .onChange(of: scannerModel.scannedCode) { _, newCode in
-            guard let code = newCode else { return }
-            print("📱 Barcode scanned: \(code)")
-            handleScannedCode(code)
+        .onChange(of: scannerModel.error.map { $0.localizedDescription }) { description in
+            showError = description != nil
+            errorMessage = description ?? ""
         }
         .onAppear {
             print("📸 Scanner view appeared")
@@ -103,39 +77,18 @@ struct BarcodeScannerView: View {
         }
     }
     
-    private func handleScannedCode(_ code: String) {
-        print("🎯 Handling scanned code: \(code)")
-        Task {
-            do {
-                if let product = try await BarcodeAPI.shared.fetchProduct(barcode: code) {
-                    print("✅ Product fetched successfully: \(product.name)")
-                    await MainActor.run {
-                        self.selectedProduct = product
-                        print("💾 Product assigned to state")
-                    }
-                } else {
-                    await MainActor.run {
-                        showError = true
-                        errorMessage = "Product not found"
-                    }
-                }
-            } catch {
-                print("❌ Error fetching product: \(error)")
-                await MainActor.run {
-                    showError = true
-                    errorMessage = error.localizedDescription
-                }
-            }
-        }
-    }
-    
-    private func addToLog(product: BarcodeProduct) {
-        print("📝 Adding product to log: \(product.name)")
+    private func addToLog(name: String, quantity: String) {
+        print("📝 Adding product to log: \(name)")
+        // Extract numeric value from quantity string (e.g., "330 ml" -> 330)
+        let numericQuantity = quantity.components(separatedBy: CharacterSet.decimalDigits.inverted)
+            .joined()
+        let volume = Double(numericQuantity) ?? 0
+        
         let entry = CaffeineEntry(
-            caffeineAmount: Double(product.caffeineContent),
-            beverageName: product.name,
+            caffeineAmount: 0, // We don't have caffeine info from OpenFoodFacts
+            beverageName: name,
             beverageType: .custom,
-            volume: Double(product.servingSize)
+            volume: volume
         )
         modelContext.insert(entry)
         try? modelContext.save()
@@ -155,6 +108,32 @@ struct CameraPreview: UIViewRepresentable {
         var videoPreviewLayer: AVCaptureVideoPreviewLayer {
             return layer as! AVCaptureVideoPreviewLayer
         }
+        
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            videoPreviewLayer.frame = bounds
+            
+            // Ensure proper orientation
+            if let connection = videoPreviewLayer.connection {
+                let orientation = UIDevice.current.orientation
+                let previewLayerConnection = connection
+                
+                if previewLayerConnection.isVideoOrientationSupported {
+                    switch orientation {
+                    case .portrait:
+                        previewLayerConnection.videoOrientation = .portrait
+                    case .landscapeRight:
+                        previewLayerConnection.videoOrientation = .landscapeLeft
+                    case .landscapeLeft:
+                        previewLayerConnection.videoOrientation = .landscapeRight
+                    case .portraitUpsideDown:
+                        previewLayerConnection.videoOrientation = .portraitUpsideDown
+                    default:
+                        previewLayerConnection.videoOrientation = .portrait
+                    }
+                }
+            }
+        }
     }
     
     func makeUIView(context: Context) -> VideoPreviewView {
@@ -162,21 +141,18 @@ struct CameraPreview: UIViewRepresentable {
         view.backgroundColor = .black
         view.videoPreviewLayer.session = session
         view.videoPreviewLayer.videoGravity = .resizeAspectFill
-        view.videoPreviewLayer.connection?.videoOrientation = .portrait
         
         return view
     }
     
     func updateUIView(_ uiView: VideoPreviewView, context: Context) {
-        DispatchQueue.main.async {
-            uiView.videoPreviewLayer.frame = uiView.bounds
-        }
+        uiView.setNeedsLayout()
     }
 }
 
 // Product info view
 struct ProductInfoView: View {
-    let product: BarcodeProduct
+    let product: OpenFoodFactsProduct
     let dismiss: DismissAction
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
@@ -184,92 +160,72 @@ struct ProductInfoView: View {
     
     var body: some View {
         NavigationView {
-            List {
-                Section {
-                    VStack(alignment: .center, spacing: 16) {
-                        // Product Image
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(colorScheme == .dark ? Color.gray.opacity(0.2) : Color.gray.opacity(0.1))
-                            
-                            AsyncImage(url: product.imageURL) { image in
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Product Image
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(colorScheme == .dark ? Color.gray.opacity(0.2) : Color.gray.opacity(0.1))
+                        
+                        if let imageUrl = product.imageUrl {
+                            AsyncImage(url: URL(string: imageUrl)) { image in
                                 image
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
                             } placeholder: {
                                 Image(systemName: "cup.and.saucer.fill")
                                     .font(.system(size: 40))
-                                    .foregroundColor(.gray)
                             }
+                        } else {
+                            Image(systemName: "cup.and.saucer.fill")
+                                .font(.system(size: 40))
                         }
-                        .frame(height: 200)
+                    }
+                    .frame(height: 200)
+                    
+                    // Product Details
+                    VStack(spacing: 8) {
+                        Text(product.productName ?? "Unknown Product")
+                            .font(.title2)
+                            .bold()
+                            .multilineTextAlignment(.center)
                         
-                        // Product Details
-                        VStack(spacing: 8) {
-                            Text(product.name)
-                                .font(.title2)
-                                .bold()
-                                .multilineTextAlignment(.center)
-                            
-                            HStack(spacing: 20) {
-                                InfoCard(
-                                    title: "Caffeine",
-                                    value: "\(product.caffeineContent)",
-                                    unit: "mg",
-                                    icon: "bolt.fill"
-                                )
-                                
-                                InfoCard(
-                                    title: "Volume",
-                                    value: "\(product.servingSize)",
-                                    unit: "ml",
-                                    icon: "drop.fill"
-                                )
-                            }
+                        HStack(spacing: 20) {
+                            InfoCard(
+                                title: "Serving",
+                                value: product.quantity ?? "Unknown",
+                                unit: "",
+                                icon: "drop.fill"
+                            )
                         }
                     }
-                    .padding(.vertical)
-                    .listRowInsets(EdgeInsets())
+                    .padding(.horizontal)
                 }
-                
-                Section {
-                    Button(action: {
-                        addToLog()
-                        dismissSheet()
-                        dismiss()
-                    }) {
-                        HStack {
-                            Spacer()
-                            Label("Add to Today's Log", systemImage: "plus.circle.fill")
-                                .font(.headline)
-                            Spacer()
-                        }
-                    }
-                }
+                .padding(.top)
             }
-            .navigationTitle("Scanned Product")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismissSheet()
-                        dismiss()
-                    }
+            .navigationBarItems(
+                leading: Button("Cancel") {
+                    dismissSheet()
+                },
+                trailing: Button("Add") {
+                    addToLog()
+                    dismissSheet()
                 }
-            }
+            )
         }
     }
     
     private func addToLog() {
         let entry = CaffeineEntry(
-            caffeineAmount: Double(product.caffeineContent),
-            beverageName: product.name,
+            caffeineAmount: 0, // No caffeine info from OpenFoodFacts
+            beverageName: product.productName ?? "Unknown Product",
             beverageType: .custom,
-            volume: Double(product.servingSize)
+            volume: 0 // We don't have standardized volume information
         )
         modelContext.insert(entry)
         try? modelContext.save()
-        print("Added entry to log: \(product.name)")
+        print("Added entry to log: \(product.productName ?? "Unknown Product")")
     }
 }
 
@@ -282,21 +238,14 @@ struct InfoCard: View {
     var body: some View {
         VStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 24))
-                .foregroundColor(.accentColor)
+                .font(.title2)
             
             Text(title)
                 .font(.caption)
                 .foregroundColor(.secondary)
             
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(value)
-                    .font(.title3)
-                    .bold()
-                Text(unit)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+            Text("\(value)\(unit.isEmpty ? "" : " \(unit)")")
+                .font(.headline)
         }
         .frame(maxWidth: .infinity)
         .padding()
@@ -304,5 +253,4 @@ struct InfoCard: View {
         .cornerRadius(12)
         .shadow(radius: 2)
     }
-} 
-
+}

@@ -6,6 +6,8 @@ class BarcodeScannerModel: NSObject, ObservableObject {
     @Published var scannedCode: String?
     @Published var isScanning = false
     @Published var error: Error?
+    @Published var currentProduct: OpenFoodFactsProduct?
+    @Published var isLoading = false
     
     let session = AVCaptureSession()
     private let metadataQueue = DispatchQueue(label: "com.decaff.barcodescanner.metadata")
@@ -19,10 +21,8 @@ class BarcodeScannerModel: NSObject, ObservableObject {
     
     private func setupCamera() {
         print("Setting up camera")
-        // Start with session configuration
         session.beginConfiguration()
         
-        // Add video input
         guard let device = AVCaptureDevice.default(for: .video) else {
             print("No video device found")
             return
@@ -35,7 +35,6 @@ class BarcodeScannerModel: NSObject, ObservableObject {
                 print("Added video input")
             }
             
-            // Add metadata output
             let output = AVCaptureMetadataOutput()
             if session.canAddOutput(output) {
                 session.addOutput(output)
@@ -44,28 +43,30 @@ class BarcodeScannerModel: NSObject, ObservableObject {
                 print("Added metadata output")
             }
             
-            // Commit configuration
             session.commitConfiguration()
             print("Camera setup completed")
             
         } catch {
-            print("Error setting up camera: \(error.localizedDescription)")
             self.error = error
+            print("Error setting up camera: \(error.localizedDescription)")
         }
     }
     
     func startScanning() {
+        guard !session.isRunning else { return }
+        
         print("Starting scanning session")
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        metadataQueue.async { [weak self] in
             self?.session.startRunning()
-            DispatchQueue.main.async {
-                self?.isScanning = true
-                print("Scanning started")
-            }
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.isScanning = true
         }
     }
     
     func stopScanning() {
+        guard session.isRunning else { return }
+        
         print("Stopping scanning session")
         session.stopRunning()
         DispatchQueue.main.async { [weak self] in
@@ -75,65 +76,29 @@ class BarcodeScannerModel: NSObject, ObservableObject {
 }
 
 extension BarcodeScannerModel: AVCaptureMetadataOutputObjectsDelegate {
-    func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
-        if let metadataObject = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
-           let code = metadataObject.stringValue {
-            print("Barcode detected: \(code)")
-            DispatchQueue.main.async { [weak self] in
-                self?.scannedCode = code
-                self?.stopScanning()
-            }
+    func metadataOutput(_ output: AVCaptureMetadataOutput,
+                       didOutput metadataObjects: [AVMetadataObject],
+                       from connection: AVCaptureConnection) {
+        
+        guard let metadataObject = metadataObjects.first,
+              let readableObject = metadataObject as? AVMetadataMachineReadableCodeObject,
+              let stringValue = readableObject.stringValue else { return }
+        
+        DispatchQueue.main.async {
+            self.scannedCode = stringValue
+            self.isLoading = true
+            
+            OpenFoodFactsService.shared.fetchProduct(barcode: stringValue)
+                .sink { completion in
+                    self.isLoading = false
+                    if case .failure(let error) = completion {
+                        self.error = error
+                    }
+                } receiveValue: { product in
+                    self.currentProduct = product
+                    self.stopScanning()
+                }
+                .store(in: &self.cancellables)
         }
     }
 }
-
-struct BarcodeProduct: Identifiable {
-    let id = UUID()
-    let name: String
-    let caffeineContent: Int
-    let servingSize: Int
-    let imageURL: URL?
-    let barcode: String
-}
-
-class BarcodeAPI {
-    static let shared = BarcodeAPI()
-    
-    private init() {}
-    
-    func fetchProduct(barcode: String) async throws -> BarcodeProduct? {
-        print("🔍 Fetching product for barcode: \(barcode)")
-        
-        // Mock data for testing
-        let product: BarcodeProduct
-        switch barcode {
-        case "5449000000996":  // Regular Coca-Cola
-            product = BarcodeProduct(
-                name: "Coca-Cola Classic",
-                caffeineContent: 32,
-                servingSize: 330,
-                imageURL: URL(string: "https://world.openfoodfacts.org/images/products/544/900/000/0996/front_en.248.400.jpg"),
-                barcode: barcode
-            )
-        case "9002490100070":  // Red Bull
-            product = BarcodeProduct(
-                name: "Red Bull Energy Drink",
-                caffeineContent: 80,
-                servingSize: 250,
-                imageURL: URL(string: "https://world.openfoodfacts.org/images/products/900/249/010/0070/front_en.191.400.jpg"),
-                barcode: barcode
-            )
-        default:  // Generic energy drink
-            product = BarcodeProduct(
-                name: "Energy Drink",
-                caffeineContent: 80,
-                servingSize: 250,
-                imageURL: nil,
-                barcode: barcode
-            )
-        }
-        
-        print("📦 Product found: \(product.name)")
-        return product
-    }
-} 
