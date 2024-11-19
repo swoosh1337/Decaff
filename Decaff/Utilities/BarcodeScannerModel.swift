@@ -6,12 +6,13 @@ class BarcodeScannerModel: NSObject, ObservableObject {
     @Published var scannedCode: String?
     @Published var isScanning = false
     @Published var error: Error?
-    @Published var currentProduct: OpenFoodFactsProduct?
+    @Published var currentProduct: NutritionixProduct?
     @Published var isLoading = false
     
     let session = AVCaptureSession()
     private let metadataQueue = DispatchQueue(label: "com.decaff.barcodescanner.metadata")
     private var cancellables = Set<AnyCancellable>()
+    private var lastScannedCode: String?
     
     override init() {
         super.init()
@@ -58,9 +59,12 @@ class BarcodeScannerModel: NSObject, ObservableObject {
         print("Starting scanning session")
         metadataQueue.async { [weak self] in
             self?.session.startRunning()
-        }
-        DispatchQueue.main.async { [weak self] in
-            self?.isScanning = true
+            DispatchQueue.main.async { [weak self] in
+                self?.isScanning = true
+                self?.lastScannedCode = nil
+                self?.error = nil
+                self?.currentProduct = nil
+            }
         }
     }
     
@@ -68,9 +72,15 @@ class BarcodeScannerModel: NSObject, ObservableObject {
         guard session.isRunning else { return }
         
         print("Stopping scanning session")
-        session.stopRunning()
-        DispatchQueue.main.async { [weak self] in
-            self?.isScanning = false
+        metadataQueue.async { [weak self] in
+            self?.session.stopRunning()
+            DispatchQueue.main.async { [weak self] in
+                self?.isScanning = false
+                self?.currentProduct = nil
+                self?.scannedCode = nil
+                self?.error = nil
+                self?.lastScannedCode = nil
+            }
         }
     }
 }
@@ -82,23 +92,36 @@ extension BarcodeScannerModel: AVCaptureMetadataOutputObjectsDelegate {
         
         guard let metadataObject = metadataObjects.first,
               let readableObject = metadataObject as? AVMetadataMachineReadableCodeObject,
-              let stringValue = readableObject.stringValue else { return }
+              let stringValue = readableObject.stringValue,
+              lastScannedCode != stringValue else { return }
         
-        DispatchQueue.main.async {
+        lastScannedCode = stringValue
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             self.scannedCode = stringValue
             self.isLoading = true
             
-            OpenFoodFactsService.shared.fetchProduct(barcode: stringValue)
-                .sink { completion in
-                    self.isLoading = false
-                    if case .failure(let error) = completion {
-                        self.error = error
-                    }
-                } receiveValue: { product in
+            Task {
+                do {
+                    let product = try await NutritionixService.shared.searchByUPC(stringValue)
                     self.currentProduct = product
-                    self.stopScanning()
+                    self.isLoading = false
+                    print("✅ Found product: \(product.foodName)")
+                } catch NutritionixError.productNotFound {
+                    self.error = NSError(domain: "com.decaff", code: 404, userInfo: [
+                        NSLocalizedDescriptionKey: "Product not found in database"
+                    ])
+                    self.lastScannedCode = nil // Allow rescanning
+                    self.isLoading = false
+                    print("❌ Product not found")
+                } catch {
+                    self.error = error
+                    self.lastScannedCode = nil // Allow rescanning
+                    self.isLoading = false
+                    print("❌ Error: \(error.localizedDescription)")
                 }
-                .store(in: &self.cancellables)
+            }
         }
     }
 }

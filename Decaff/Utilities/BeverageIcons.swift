@@ -1,63 +1,7 @@
 import Foundation
 
 enum BeverageIcons {
-    static func iconFor(name: String, type: BeverageType) -> String {
-        // Check for specific brands/drinks first
-        let lowercaseName = name.lowercased()
-        
-        // Starbucks drinks
-        if lowercaseName.contains("starbucks") {
-            if lowercaseName.contains("frappuccino") {
-                return "cup.and.saucer.fill"  // Could be custom SF Symbol for frappuccino
-            }
-            return "star.circle.fill"  // Starbucks general
-        }
-        
-        // Energy Drinks
-        if lowercaseName.contains("red bull") {
-            return "bolt.shield.fill"
-        }
-        if lowercaseName.contains("monster") {
-            return "bolt.circle.fill"
-        }
-        if lowercaseName.contains("5-hour") || lowercaseName.contains("5 hour") {
-            return "clock.badge.checkmark.fill"
-        }
-        
-        // Coffee varieties
-        if lowercaseName.contains("espresso") {
-            return "smallcup.fill"  // Custom name for espresso icon
-        }
-        if lowercaseName.contains("latte") {
-            return "cup.and.saucer.fill"
-        }
-        if lowercaseName.contains("cappuccino") {
-            return "cup.and.saucer.fill"
-        }
-        
-        // Tea varieties
-        if lowercaseName.contains("green tea") {
-            return "leaf.circle.fill"
-        }
-        if lowercaseName.contains("black tea") {
-            return "leaf.fill"
-        }
-        if lowercaseName.contains("matcha") {
-            return "leaf.arrow.circlepath"
-        }
-        
-        // Sodas
-        if lowercaseName.contains("coca") || lowercaseName.contains("coke") {
-            return "bubbles.and.sparkles.fill"
-        }
-        if lowercaseName.contains("pepsi") {
-            return "circle.grid.cross.fill"
-        }
-        if lowercaseName.contains("dr pepper") {
-            return "cross.circle.fill"
-        }
-        
-        // Default icons based on type
+    static func iconFor(name: String = "", type: BeverageType) -> String {
         switch type {
         case .coffee:
             return "cup.and.saucer.fill"
@@ -66,9 +10,21 @@ enum BeverageIcons {
         case .energyDrink:
             return "bolt.fill"
         case .soda:
-            return "bubbles.and.sparkles"
+            return "bubbles.and.sparkles.fill"
         case .custom:
-            return "cup.and.saucer"
+            // Use specific icons based on name if available
+            let lowercasedName = name.lowercased()
+            if lowercasedName.contains("coffee") {
+                return "cup.and.saucer.fill"
+            } else if lowercasedName.contains("tea") {
+                return "leaf.fill"
+            } else if lowercasedName.contains("energy") || lowercasedName.contains("monster") || lowercasedName.contains("red bull") {
+                return "bolt.fill"
+            } else if lowercasedName.contains("cola") || lowercasedName.contains("soda") || lowercasedName.contains("pepsi") {
+                return "bubbles.and.sparkles.fill"
+            }
+            // Default icon for custom beverages
+            return "cup.and.saucer.fill"
         }
     }
 } 

@@ -7,6 +7,7 @@ struct BarcodeScannerView: View {
     @StateObject private var scannerModel = BarcodeScannerModel()
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var showCaffeineAlert = false
     
     var body: some View {
         NavigationView {
@@ -17,32 +18,10 @@ struct BarcodeScannerView: View {
                         .ignoresSafeArea()
                     
                     // Scanning overlay
-                    VStack {
-                        Spacer()
-                        RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(.white, lineWidth: 2)
-                            .frame(width: geometry.size.width * 0.7, height: geometry.size.height * 0.2)
-                            .overlay {
-                                if scannerModel.isScanning {
-                                    Rectangle()
-                                        .fill(.white.opacity(0.2))
-                                        .animation(.easeInOut(duration: 1).repeatForever(), value: scannerModel.isScanning)
-                                }
-                            }
-                        Spacer()
-                    }
+                    ScanningOverlayView(isScanning: scannerModel.isScanning, geometry: geometry)
                     
                     // Instructions
-                    VStack {
-                        Spacer()
-                        Text("Position barcode within frame")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .padding()
-                            .background(.black.opacity(0.7))
-                            .cornerRadius(8)
-                            .padding(.bottom, 50)
-                    }
+                    InstructionsOverlayView(isLoading: scannerModel.isLoading)
                 }
             }
             .background(Color.black)
@@ -50,13 +29,24 @@ struct BarcodeScannerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundColor(.white)
+                    Button("Cancel") {
+                        scannerModel.stopScanning()
+                        scannerModel.currentProduct = nil
+                        dismiss()
+                    }
+                    .foregroundColor(.white)
                 }
             }
         }
         .sheet(item: $scannerModel.currentProduct) { product in
-            ProductInfoView(product: product, dismiss: dismiss)
+            ProductDetailSheet(product: product, showCaffeineAlert: $showCaffeineAlert, onAdd: {
+                addToLog(product: product)
+                dismiss()
+            }, onCancel: {
+                scannerModel.stopScanning()
+                scannerModel.currentProduct = nil
+                dismiss()
+            })
         }
         .alert("Error", isPresented: $showError) {
             Button("OK") { }
@@ -77,26 +67,149 @@ struct BarcodeScannerView: View {
         }
     }
     
-    private func addToLog(name: String, quantity: String) {
-        print("📝 Adding product to log: \(name)")
-        // Extract numeric value from quantity string (e.g., "330 ml" -> 330)
-        let numericQuantity = quantity.components(separatedBy: CharacterSet.decimalDigits.inverted)
-            .joined()
-        let volume = Double(numericQuantity) ?? 0
+    private func addToLog(product: NutritionixProduct) {
+        guard let caffeineContent = product.nfCaffeine else { return }
+        
+        print("📝 Adding product to log: \(product.foodName)")
         
         let entry = CaffeineEntry(
-            caffeineAmount: 0, // We don't have caffeine info from OpenFoodFacts
-            beverageName: name,
+            caffeineAmount: caffeineContent,
+            beverageName: product.brandName != nil ? "\(product.brandName!) \(product.foodName)" : product.foodName,
             beverageType: .custom,
-            volume: volume
+            volume: product.servingQuantity
         )
+        
         modelContext.insert(entry)
         try? modelContext.save()
-        print("✅ Entry added to log")
+        print("✅ Entry added to log: \(product.foodName) with \(caffeineContent)mg caffeine")
     }
 }
 
-// Camera preview using AVFoundation
+// MARK: - Supporting Views
+
+struct ScanningOverlayView: View {
+    let isScanning: Bool
+    let geometry: GeometryProxy
+    
+    var body: some View {
+        VStack {
+            Spacer()
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(.white, lineWidth: 2)
+                .frame(width: geometry.size.width * 0.7, height: geometry.size.height * 0.2)
+                .overlay {
+                    if isScanning {
+                        Rectangle()
+                            .fill(.white.opacity(0.2))
+                            .animation(.easeInOut(duration: 1).repeatForever(), value: isScanning)
+                    }
+                }
+            Spacer()
+        }
+    }
+}
+
+struct InstructionsOverlayView: View {
+    let isLoading: Bool
+    
+    var body: some View {
+        VStack {
+            Spacer()
+            Group {
+                if isLoading {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(.white)
+                        .scaleEffect(1.5)
+                        .padding()
+                        .background(.black.opacity(0.7))
+                        .cornerRadius(8)
+                } else {
+                    Text("Position barcode within frame")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(.black.opacity(0.7))
+                        .cornerRadius(8)
+                }
+            }
+            .padding(.bottom, 50)
+            .padding(.horizontal)
+        }
+    }
+}
+
+struct ProductDetailSheet: View {
+    let product: NutritionixProduct
+    @Binding var showCaffeineAlert: Bool
+    let onAdd: () -> Void
+    let onCancel: () -> Void
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                if let photoURL = product.photoURL,
+                   let url = URL(string: photoURL) {
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(height: 200)
+                    } placeholder: {
+                        ProgressView()
+                    }
+                    .padding()
+                }
+                
+                Text(product.foodName)
+                    .font(.title2)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
+                if let brand = product.brandName {
+                    Text(brand)
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                }
+                
+                Text("Serving: \(String(format: "%.1f", product.servingQuantity)) \(product.servingUnit)")
+                
+                if let caffeine = product.nfCaffeine {
+                    Text("Caffeine: \(Int(caffeine))mg")
+                        .font(.headline)
+                        .foregroundColor(.accentColor)
+                } else {
+                    Text("Caffeine content not available")
+                        .foregroundColor(.red)
+                }
+                
+                Spacer()
+                
+                VStack(spacing: 12) {
+                    Button("Add to Log") {
+                        if product.nfCaffeine != nil {
+                            onAdd()
+                        } else {
+                            showCaffeineAlert = true
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    
+                    Button("Cancel", role: .cancel, action: onCancel)
+                        .buttonStyle(.bordered)
+                }
+                .padding()
+            }
+            .navigationBarHidden(true)
+        }
+        .alert("Missing Caffeine Content", isPresented: $showCaffeineAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("This product doesn't have caffeine content information available.")
+        }
+    }
+}
+
 struct CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
     
@@ -106,33 +219,7 @@ struct CameraPreview: UIViewRepresentable {
         }
         
         var videoPreviewLayer: AVCaptureVideoPreviewLayer {
-            return layer as! AVCaptureVideoPreviewLayer
-        }
-        
-        override func layoutSubviews() {
-            super.layoutSubviews()
-            videoPreviewLayer.frame = bounds
-            
-            // Ensure proper orientation
-            if let connection = videoPreviewLayer.connection {
-                let orientation = UIDevice.current.orientation
-                let previewLayerConnection = connection
-                
-                if previewLayerConnection.isVideoOrientationSupported {
-                    switch orientation {
-                    case .portrait:
-                        previewLayerConnection.videoOrientation = .portrait
-                    case .landscapeRight:
-                        previewLayerConnection.videoOrientation = .landscapeLeft
-                    case .landscapeLeft:
-                        previewLayerConnection.videoOrientation = .landscapeRight
-                    case .portraitUpsideDown:
-                        previewLayerConnection.videoOrientation = .portraitUpsideDown
-                    default:
-                        previewLayerConnection.videoOrientation = .portrait
-                    }
-                }
-            }
+            layer as! AVCaptureVideoPreviewLayer
         }
     }
     
@@ -141,116 +228,8 @@ struct CameraPreview: UIViewRepresentable {
         view.backgroundColor = .black
         view.videoPreviewLayer.session = session
         view.videoPreviewLayer.videoGravity = .resizeAspectFill
-        
         return view
     }
     
-    func updateUIView(_ uiView: VideoPreviewView, context: Context) {
-        uiView.setNeedsLayout()
-    }
-}
-
-// Product info view
-struct ProductInfoView: View {
-    let product: OpenFoodFactsProduct
-    let dismiss: DismissAction
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.dismiss) private var dismissSheet
-    
-    var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Product Image
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(colorScheme == .dark ? Color.gray.opacity(0.2) : Color.gray.opacity(0.1))
-                        
-                        if let imageUrl = product.imageUrl {
-                            AsyncImage(url: URL(string: imageUrl)) { image in
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                            } placeholder: {
-                                Image(systemName: "cup.and.saucer.fill")
-                                    .font(.system(size: 40))
-                            }
-                        } else {
-                            Image(systemName: "cup.and.saucer.fill")
-                                .font(.system(size: 40))
-                        }
-                    }
-                    .frame(height: 200)
-                    
-                    // Product Details
-                    VStack(spacing: 8) {
-                        Text(product.productName ?? "Unknown Product")
-                            .font(.title2)
-                            .bold()
-                            .multilineTextAlignment(.center)
-                        
-                        HStack(spacing: 20) {
-                            InfoCard(
-                                title: "Serving",
-                                value: product.quantity ?? "Unknown",
-                                unit: "",
-                                icon: "drop.fill"
-                            )
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-                .padding(.top)
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: Button("Cancel") {
-                    dismissSheet()
-                },
-                trailing: Button("Add") {
-                    addToLog()
-                    dismissSheet()
-                }
-            )
-        }
-    }
-    
-    private func addToLog() {
-        let entry = CaffeineEntry(
-            caffeineAmount: 0, // No caffeine info from OpenFoodFacts
-            beverageName: product.productName ?? "Unknown Product",
-            beverageType: .custom,
-            volume: 0 // We don't have standardized volume information
-        )
-        modelContext.insert(entry)
-        try? modelContext.save()
-        print("Added entry to log: \(product.productName ?? "Unknown Product")")
-    }
-}
-
-struct InfoCard: View {
-    let title: String
-    let value: String
-    let unit: String
-    let icon: String
-    
-    var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.title2)
-            
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            Text("\(value)\(unit.isEmpty ? "" : " \(unit)")")
-                .font(.headline)
-        }
-        .frame(maxWidth: .infinity)
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(radius: 2)
-    }
+    func updateUIView(_ uiView: VideoPreviewView, context: Context) { }
 }

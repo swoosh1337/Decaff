@@ -39,6 +39,9 @@ struct AddBeverageView: View {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.gray)
                         TextField("Search drinks...", text: $searchText)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.search)
                     }
                     
                     if !searchText.isEmpty {

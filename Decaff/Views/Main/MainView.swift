@@ -9,7 +9,7 @@ import SwiftData
 
 struct MainView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var entries: [CaffeineEntry]
+    @Query(sort: \CaffeineEntry.timestamp, order: .reverse) private var entries: [CaffeineEntry]
     @State private var showingAddEntry = false
     @State private var showingBarcodeScanner = false
     
@@ -33,8 +33,8 @@ struct MainView: View {
                         .padding(.horizontal)
                     }
                     
-                    CaffeineStatsCard(entries: entries)
-                    CaffeineMetabolismGraph(entries: entries)
+                    CaffeineStatsCard(entries: todayEntries)
+                    CaffeineMetabolismGraph(entries: todayEntries)
                     
                     // Add Beverage Buttons
                     HStack {
@@ -60,7 +60,7 @@ struct MainView: View {
                     }
                     .padding(.horizontal)
                     
-                    TodayEntriesList(entries: entries)
+                    TodayEntriesList(entries: todayEntries)
                 }
                 .padding()
             }
@@ -74,6 +74,12 @@ struct MainView: View {
         }
     }
     
+    private var todayEntries: [CaffeineEntry] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        return entries.filter { calendar.startOfDay(for: $0.timestamp) == today }
+    }
+    
     private func quickAdd(_ beverageType: PresetBeverage) {
         let entry = CaffeineEntry(
             caffeineAmount: beverageType.caffeineAmount,
@@ -82,6 +88,12 @@ struct MainView: View {
             volume: 250
         )
         modelContext.insert(entry)
+        do {
+            try modelContext.save()
+            print("✅ Quick added: \(beverageType.name) with \(beverageType.caffeineAmount)mg caffeine")
+        } catch {
+            print("❌ Failed to save Quick Add entry: \(error.localizedDescription)")
+        }
     }
 }
 
@@ -110,8 +122,7 @@ struct CaffeineStatsCard: View {
     let entries: [CaffeineEntry]
     
     var totalCaffeine: Double {
-        entries.filter { Calendar.current.isDateInToday($0.timestamp) }
-            .reduce(0) { $0 + $1.caffeineAmount }
+        entries.reduce(0) { $0 + $1.caffeineAmount }
     }
     
     var body: some View {
@@ -140,24 +151,19 @@ struct TodayEntriesList: View {
     @Environment(\.modelContext) private var modelContext
     let entries: [CaffeineEntry]
     
-    private var todayEntries: [CaffeineEntry] {
-        entries.filter { Calendar.current.isDateInToday($0.timestamp) }
-            .sorted { $0.timestamp > $1.timestamp }
-    }
-    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Today's Beverages")
                 .font(.headline)
                 .padding(.horizontal)
             
-            if todayEntries.isEmpty {
+            if entries.isEmpty {
                 Text("No beverages logged today")
                     .foregroundColor(.secondary)
                     .padding()
             } else {
                 List {
-                    ForEach(todayEntries) { entry in
+                    ForEach(entries) { entry in
                         EntryRow(entry: entry)
                             .listRowInsets(EdgeInsets())
                             .listRowBackground(Color.clear)
@@ -171,7 +177,7 @@ struct TodayEntriesList: View {
                     }
                 }
                 .listStyle(.plain)
-                .frame(minHeight: CGFloat(todayEntries.count * 60))
+                .frame(minHeight: CGFloat(entries.count * 60))
             }
         }
         .padding()
@@ -187,7 +193,6 @@ struct TodayEntriesList: View {
         }
     }
 }
-
 
 #Preview {
     MainView()

@@ -21,6 +21,7 @@ struct OpenFoodFactsProduct: Codable, Identifiable {
     let ingredients: String?
     let quantity: String?
     let nutritionGrades: String?
+    let caffeineContent: Double?
     
     enum CodingKeys: String, CodingKey {
         case id = "code"
@@ -31,5 +32,6 @@ struct OpenFoodFactsProduct: Codable, Identifiable {
         case ingredients = "ingredients_text"
         case quantity
         case nutritionGrades = "nutrition_grades"
+        case caffeineContent = "nutriments.caffeine"
     }
 }
