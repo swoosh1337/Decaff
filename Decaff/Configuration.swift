@@ -20,6 +20,10 @@ enum Configuration {
             throw Error.invalidValue
         }
     }
+    
+    static func value(for key: String) -> String? {
+        Bundle.main.object(forInfoDictionaryKey: key) as? String
+    }
 }
 
 enum API {
@@ -37,5 +41,9 @@ enum API {
         } catch {
             fatalError("NUTRITIONIX_API_KEY not set in plist")
         }
+    }
+    
+    static var openAIKey: String {
+        Configuration.value(for: "OPENAI_API_KEY") ?? ""
     }
 }

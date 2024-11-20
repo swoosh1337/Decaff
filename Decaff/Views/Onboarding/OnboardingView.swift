@@ -5,13 +5,14 @@
 //  Created by Tazi Grigolia on 11/11/24.
 //
 
-
 import SwiftUI
 import SwiftData
 
 struct OnboardingView: View {
-    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
+    @StateObject private var profileManager = UserProfileManager.shared
     @State private var currentPage = 0
+    @State private var userName = ""
+    @State private var showNameInput = false
     
     private let pages = [
         OnboardingPage(
@@ -33,42 +34,52 @@ struct OnboardingView: View {
     
     var body: some View {
         ZStack {
-            TabView(selection: $currentPage) {
-                ForEach(0..<pages.count, id: \.self) { index in
-                    OnboardingPageView(page: pages[index])
-                        .tag(index)
+            if showNameInput {
+                NameInputView(userName: $userName, onComplete: completeOnboarding)
+                    .transition(.move(edge: .trailing))
+            } else {
+                TabView(selection: $currentPage) {
+                    ForEach(0..<pages.count, id: \.self) { index in
+                        OnboardingPageView(page: pages[index])
+                            .tag(index)
+                    }
                 }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            
-            VStack {
-                Spacer()
-                PageControl(numberOfPages: pages.count, currentPage: $currentPage)
-                    .padding(.bottom)
+                .tabViewStyle(.page(indexDisplayMode: .never))
                 
-                Button(action: nextPage) {
-                    Text(currentPage == pages.count - 1 ? "Get Started" : "Next")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.accentColor)
-                        .cornerRadius(10)
+                VStack {
+                    Spacer()
+                    PageControl(numberOfPages: pages.count, currentPage: $currentPage)
+                        .padding(.bottom)
+                    
+                    Button(action: nextPage) {
+                        Text(currentPage == pages.count - 1 ? "Continue" : "Next")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.accentColor)
+                            .cornerRadius(10)
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 30)
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 30)
             }
         }
         .gesture(
             DragGesture()
                 .onEnded { value in
-                    if value.translation.width < 0 {
-                        nextPage()
-                    } else if value.translation.width > 0 {
-                        previousPage()
+                    if !showNameInput {
+                        if value.translation.width < 0 {
+                            nextPage()
+                        } else if value.translation.width > 0 {
+                            previousPage()
+                        }
                     }
                 }
         )
+        .onAppear {
+            profileManager.createInitialProfile()
+        }
     }
     
     private func nextPage() {
@@ -76,15 +87,15 @@ struct OnboardingView: View {
             if currentPage < pages.count - 1 {
                 currentPage += 1
             } else {
-                completeOnboarding()
+                withAnimation {
+                    showNameInput = true
+                }
             }
         }
     }
     
     private func completeOnboarding() {
-        withAnimation {
-            hasSeenOnboarding = true
-        }
+        profileManager.completeOnboarding(name: userName)
     }
     
     private func previousPage() {
@@ -96,6 +107,44 @@ struct OnboardingView: View {
     }
 }
 
+struct NameInputView: View {
+    @Binding var userName: String
+    let onComplete: () -> Void
+    @FocusState private var isNameFocused: Bool
+    
+    var body: some View {
+        VStack(spacing: 30) {
+            Text("What should we call you?")
+                .font(.title2)
+                .bold()
+            
+            TextField("Your name", text: $userName)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding(.horizontal)
+                .focused($isNameFocused)
+            
+            Button(action: {
+                if !userName.isEmpty {
+                    onComplete()
+                }
+            }) {
+                Text("Get Started")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(!userName.isEmpty ? Color.accentColor : Color.gray)
+                    .cornerRadius(10)
+            }
+            .disabled(userName.isEmpty)
+            .padding(.horizontal)
+        }
+        .padding()
+        .onAppear {
+            isNameFocused = true
+        }
+    }
+}
 
 struct OnboardingPageView: View {
     let page: OnboardingPage
@@ -135,13 +184,15 @@ struct PageControl: View {
                 Circle()
                     .fill(page == currentPage ? Color.accentColor : Color.gray.opacity(0.5))
                     .frame(width: 8, height: 8)
-                    .frame(width: 10, height: 10) // Increase size for better visibility on larger screens
-                    .padding(.top, 8) // Adjust positioning
+                    .frame(width: 10, height: 10)
+                    .padding(.top, 8)
             }
         }
     }
 }
 
 #Preview {
-    OnboardingView()
+    let previewManager = UserProfileManager.preview(isPremium: false)
+    return OnboardingView()
+        .modelContainer(previewManager.modelContainer)
 }

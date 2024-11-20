@@ -10,8 +10,11 @@ import SwiftData
 
 @main
 struct DecaffApp: App {
+    @StateObject private var profileManager = UserProfileManager.shared
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
+            UserProfile.self,
             CaffeineEntry.self
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
@@ -25,8 +28,35 @@ struct DecaffApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                if let profile = profileManager.currentProfile {
+                    if profile.onboardingCompleted {
+                        ContentView()
+                    } else {
+                        OnboardingView()
+                    }
+                } else {
+                    OnboardingView()
+                }
+            }
+            .modelContainer(sharedModelContainer)
+            .onAppear {
+                profileManager.setModelContainer(sharedModelContainer)
+                if profileManager.currentProfile == nil {
+                    profileManager.createInitialProfile()
+                }
+            }
         }
-        .modelContainer(sharedModelContainer)
+    }
+}
+
+// For testing and development
+extension DecaffApp {
+    static func resetToOnboarding() {
+        UserProfileManager.shared.resetProfile()
+    }
+    
+    static func togglePremium() {
+        UserProfileManager.shared.togglePremium()
     }
 }
