@@ -7,59 +7,59 @@
 
 import SwiftUI
 import SwiftData
+import Charts
 
 struct AnalysisView: View {
     @Query private var userProfile: [UserProfile]
     @Query(sort: \CaffeineEntry.timestamp) private var caffeineEntries: [CaffeineEntry]
     @StateObject private var healthKitService = HealthKitService.shared
     @StateObject private var gptService = GPTService.shared
-    @State private var showingPremiumUpgrade = false
     @State private var weeklyAnalysis: WeeklyAnalysis?
-    @State private var sleepData: [SleepEntry] = []
+    @State private var healthKitSleepData: [SleepEntry] = []
+    @State private var sleepData: [DailySleepData] = []
+    @State private var caffeineData: [DailyCaffeineData] = []
     @State private var showingHealthKitPermission = false
     @State private var errorMessage: String?
     @State private var showingError = false
     @State private var showingTestingMenu = false
     
+    // Mock data for testing
+    @State private var mockSleepData: [(Date, Double)] = []
+    @State private var mockCaffeineData: [(Date, Double)] = []
+    
     var body: some View {
         NavigationView {
-            VStack {
-                if let profile = userProfile.first, profile.isPremium {
-                    ScrollView {
-                        VStack(spacing: 20) {
-                            WeeklyConsumptionChart(entries: caffeineEntries)
-                            SleepCorrelationView(sleepData: sleepData, caffeineEntries: caffeineEntries)
-                            
-                            if let analysis = weeklyAnalysis {
-                                AnalysisSummaryView(analysis: analysis)
-                            }
-                            
-                            AIInsightsButton(
-                                isGeneratingInsights: gptService.isAnalyzing,
-                                action: generateInsights
-                            )
-                        }
-                        .padding()
+            ScrollView {
+                VStack(spacing: 24) {
+                    WeeklyConsumptionChart(caffeineData: caffeineData.map { ($0.date, $0.totalAmount) })
+                        .frame(height: 300)
+                        .padding(.horizontal)
+                    
+                    SleepCorrelationView(sleepData: sleepData, caffeineData: caffeineData)
+                        .padding(.horizontal)
+                    
+                    if let analysis = weeklyAnalysis {
+                        AnalysisSummaryView(analysis: analysis)
+                            .padding(.horizontal)
                     }
-                    .onAppear {
-                        Task {
-                            await requestHealthKitPermission()
-                            await fetchSleepData()
-                        }
-                    }
-                } else {
-                    PremiumUpgradeView(showingUpgrade: $showingPremiumUpgrade)
+                    
+                    AIInsightsButton(
+                        isGeneratingInsights: gptService.isAnalyzing,
+                        action: generateWeeklyAnalysis
+                    )
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
                 }
+                .padding(.vertical)
             }
             .navigationTitle("Analysis")
             .toolbar {
-                #if DEBUG
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showingTestingMenu = true }) {
-                        Image(systemName: "hammer.fill")
+                    Button(action: { showingTestingMenu.toggle() }) {
+                        Image(systemName: "gear")
                     }
                 }
-                #endif
             }
             .sheet(isPresented: $showingTestingMenu) {
                 TestingMenu(isPresented: $showingTestingMenu)
@@ -79,7 +79,26 @@ struct AnalysisView: View {
             } message: {
                 Text(errorMessage ?? "An unknown error occurred")
             }
+            .task {
+                // Load mock data first as fallback
+                loadMockData()
+                
+                // Then try to fetch real data
+                await requestHealthKitPermission()
+                await fetchSleepData()
+                
+                // Generate analysis if we have data
+                if !sleepData.isEmpty && !caffeineData.isEmpty {
+                    generateWeeklyAnalysis()
+                }
+            }
         }
+    }
+    
+    private func loadMockData() {
+        // Always load mock data initially
+        sleepData = MockDataService.shared.generateMockSleepData(for: 7)
+        caffeineData = MockDataService.shared.generateMockCaffeineData(for: 7)
     }
     
     private func requestHealthKitPermission() async {
@@ -104,9 +123,11 @@ struct AnalysisView: View {
         guard let startDate = calendar.date(byAdding: .day, value: -7, to: endDate) else { return }
         
         do {
-            let sleepEntries = try await healthKitService.fetchSleepData(from: startDate, to: endDate)
+            let fetchedSleepData = try await healthKitService.fetchSleepData(from: startDate, to: endDate)
             await MainActor.run {
-                self.sleepData = sleepEntries
+                healthKitSleepData = fetchedSleepData
+                // Convert HealthKit sleep data to our DailySleepData format
+                sleepData = convertToDailySleepData(from: fetchedSleepData)
             }
         } catch {
             await MainActor.run {
@@ -116,21 +137,58 @@ struct AnalysisView: View {
         }
     }
     
-    private func generateInsights() {
+    private func convertToDailySleepData(from entries: [SleepEntry]) -> [DailySleepData] {
+        let calendar = Calendar.current
+        
+        // Group sleep entries by day
+        let groupedEntries = Dictionary(grouping: entries) { entry in
+            calendar.startOfDay(for: entry.startDate)
+        }
+        
+        return groupedEntries.map { date, entries in
+            let totalHours = entries.reduce(0.0) { $0 + $1.durationInHours }
+            let bedTime = entries.map { $0.startDate }.min()
+            let wakeTime = entries.map { $0.endDate }.max()
+            
+            return DailySleepData(
+                date: date,
+                totalHours: totalHours,
+                bedTime: bedTime,
+                wakeTime: wakeTime
+            )
+        }.sorted { $0.date < $1.date }
+    }
+    
+    private func convertToSleepEntries(from dailyData: [DailySleepData]) -> [SleepEntry] {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        return dailyData.map { daily in
+            let bedTime = daily.bedTime ?? calendar.date(byAdding: .day, value: -1, to: now)!
+            let wakeTime = daily.wakeTime ?? now
+            
+            return SleepEntry(
+                startDate: bedTime,
+                endDate: wakeTime,
+                value: Int(daily.totalHours * 3600) // Convert hours to seconds
+            )
+        }
+    }
+    
+    private func generateWeeklyAnalysis() {
         Task {
             do {
-                let calendar = Calendar.current
+                let startDate = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
                 let endDate = Date()
-                guard let startDate = calendar.date(byAdding: .day, value: -7, to: endDate) else { return }
                 
                 let recentEntries = caffeineEntries.filter { entry in
-                    calendar.isDate(entry.timestamp, inSameDayAs: startDate) ||
+                    Calendar.current.isDate(entry.timestamp, inSameDayAs: startDate) ||
                     (entry.timestamp > startDate && entry.timestamp <= endDate)
                 }
                 
                 let analysis = try await gptService.analyzeWeeklyData(
                     caffeineEntries: recentEntries,
-                    sleepEntries: sleepData
+                    sleepEntries: convertToSleepEntries(from: sleepData)
                 )
                 
                 await MainActor.run {
@@ -147,59 +205,205 @@ struct AnalysisView: View {
 }
 
 struct WeeklyConsumptionChart: View {
-    let entries: [CaffeineEntry]
+    let caffeineData: [(Date, Double)]
     
     var body: some View {
         VStack(alignment: .leading) {
-            Text("Weekly Consumption")
+            Text("Weekly Caffeine Consumption")
                 .font(.headline)
+                .padding(.bottom, 5)
             
-            if entries.isEmpty {
-                EmptyDataView(message: "No caffeine data available for the past week")
+            if caffeineData.isEmpty {
+                Text("No data available")
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                // TODO: Implement chart using Swift Charts
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.2))
-                    .frame(height: 200)
-                    .overlay(
-                        Text("Weekly consumption chart will be implemented here")
-                            .foregroundColor(.secondary)
-                    )
+                Chart {
+                    ForEach(caffeineData, id: \.0) { date, amount in
+                        BarMark(
+                            x: .value("Day", date, unit: .day),
+                            y: .value("Caffeine", amount)
+                        )
+                        .foregroundStyle(Color.brown.gradient)
+                    }
+                    
+                    RuleMark(y: .value("Max Recommended", 400))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
+                        .foregroundStyle(.red)
+                        .annotation(position: .top, alignment: .leading) {
+                            Text("400mg")
+                                .font(.caption)
+                                .foregroundColor(.red)
+                                .padding(.leading, 4)
+                        }
+                }
+                .chartXAxis {
+                    AxisMarks(values: .stride(by: .day)) { value in
+                        AxisValueLabel(format: .dateTime.weekday())
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks { value in
+                        let mgValue = value.as(Double.self) ?? 0
+                        AxisValueLabel("\(Int(mgValue))mg")
+                    }
+                }
             }
         }
         .padding()
         .background(Color(.systemBackground))
-        .cornerRadius(12)
+        .cornerRadius(10)
         .shadow(radius: 2)
     }
 }
 
 struct SleepCorrelationView: View {
-    let sleepData: [SleepEntry]
-    let caffeineEntries: [CaffeineEntry]
+    let sleepData: [DailySleepData]
+    let caffeineData: [DailyCaffeineData]
     
     var body: some View {
-        VStack(alignment: .leading) {
-            Text("Sleep Correlation")
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Sleep & Caffeine Analysis")
                 .font(.headline)
+                .padding(.bottom, 5)
             
-            if sleepData.isEmpty {
-                EmptyDataView(message: "No sleep data available")
+            if sleepData.isEmpty || caffeineData.isEmpty {
+                Text("No data available")
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                // TODO: Implement correlation visualization
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.2))
-                    .frame(height: 200)
-                    .overlay(
-                        Text("Sleep correlation data will be shown here")
-                            .foregroundColor(.secondary)
-                    )
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(Array(zip(sleepData, caffeineData)), id: \.0.date) { sleep, caffeine in
+                            DailyAnalysisCard(sleep: sleep, caffeine: caffeine)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+                
+                Divider()
+                
+                // Summary section
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Weekly Summary")
+                        .font(.headline)
+                    
+                    HStack(spacing: 20) {
+                        VStack(alignment: .leading) {
+                            Label {
+                                Text("Avg Sleep")
+                            } icon: {
+                                Image(systemName: "bed.double.fill")
+                                    .foregroundColor(.blue)
+                            }
+                            Text(String(format: "%.1f hours", averageSleep))
+                                .bold()
+                        }
+                        
+                        VStack(alignment: .leading) {
+                            Label {
+                                Text("Avg Caffeine")
+                            } icon: {
+                                Image(systemName: "cup.and.saucer.fill")
+                                    .foregroundColor(.brown)
+                            }
+                            Text("\(Int(averageCaffeine))mg")
+                                .bold()
+                        }
+                        
+                        if let avgBloodLevel = averageBloodLevelAtSleep {
+                            VStack(alignment: .leading) {
+                                Label {
+                                    Text("Avg Bedtime Level")
+                                } icon: {
+                                    Image(systemName: "moon.fill")
+                                        .foregroundColor(.purple)
+                                }
+                                Text("\(Int(avgBloodLevel))mg")
+                                    .bold()
+                            }
+                        }
+                    }
+                    .font(.subheadline)
+                }
+                .padding(.top, 8)
             }
         }
         .padding()
         .background(Color(.systemBackground))
-        .cornerRadius(12)
+        .cornerRadius(10)
         .shadow(radius: 2)
+    }
+    
+    private var averageSleep: Double {
+        guard !sleepData.isEmpty else { return 0 }
+        let total = sleepData.reduce(0.0) { $0 + $1.totalHours }
+        return total / Double(sleepData.count)
+    }
+    
+    private var averageCaffeine: Double {
+        guard !caffeineData.isEmpty else { return 0 }
+        let total = caffeineData.reduce(0.0) { $0 + $1.totalAmount }
+        return total / Double(caffeineData.count)
+    }
+    
+    private var averageBloodLevelAtSleep: Double? {
+        let levels = caffeineData.compactMap { $0.estimatedBloodLevelAtSleep }
+        guard !levels.isEmpty else { return nil }
+        return levels.reduce(0.0, +) / Double(levels.count)
+    }
+}
+
+struct DailyAnalysisCard: View {
+    let sleep: DailySleepData
+    let caffeine: DailyCaffeineData
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(sleep.date, format: .dateTime.weekday(.wide))
+                .font(.headline)
+            
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "bed.double.fill")
+                        .foregroundColor(.blue)
+                    Text("\(String(format: "%.1f", sleep.totalHours))h sleep")
+                }
+                
+                if let bedTime = sleep.bedTime {
+                    Text("Bed: \(bedTime, format: .dateTime.hour().minute())")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Divider()
+                
+                HStack {
+                    Image(systemName: "cup.and.saucer.fill")
+                        .foregroundColor(.brown)
+                    Text("\(Int(caffeine.totalAmount))mg caffeine")
+                }
+                
+                if let lastIntake = caffeine.lastIntakeTime {
+                    Text("Last: \(lastIntake, format: .dateTime.hour().minute())")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                if let bloodLevel = caffeine.estimatedBloodLevelAtSleep {
+                    HStack {
+                        Image(systemName: "moon.fill")
+                            .foregroundColor(.purple)
+                        Text("\(Int(bloodLevel))mg at bed")
+                            .font(.caption)
+                    }
+                }
+            }
+        }
+        .padding()
+        .frame(width: 160)
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(10)
     }
 }
 
