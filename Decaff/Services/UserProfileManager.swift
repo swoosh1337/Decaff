@@ -8,9 +8,14 @@ class UserProfileManager: ObservableObject {
     let modelContainer: ModelContainer
     var modelContext: ModelContext
     
+    @AppStorage("onboardingCompleted") private var onboardingCompleted = false
+    
     @Published var currentProfile: UserProfile? {
         didSet {
             try? modelContext.save()
+            if let profile = currentProfile {
+                onboardingCompleted = profile.onboardingCompleted
+            }
         }
     }
     
@@ -53,10 +58,15 @@ class UserProfileManager: ObservableObject {
     }
     
     func completeOnboarding(name: String) {
+        print("DEBUG: UserProfileManager - Completing onboarding for name: \(name)")
         updateProfile { profile in
             profile.name = name
             profile.onboardingCompleted = true
         }
+        onboardingCompleted = true
+        print("DEBUG: UserProfileManager - Profile updated, onboardingCompleted: \(String(describing: currentProfile?.onboardingCompleted))")
+        print("DEBUG: UserProfileManager - AppStorage onboardingCompleted: \(onboardingCompleted)")
+        objectWillChange.send()
     }
     
     func updateProfile(_ updates: (UserProfile) -> Void) {
@@ -76,6 +86,7 @@ class UserProfileManager: ObservableObject {
             modelContext.delete(profile)
             try? modelContext.save()
             currentProfile = nil
+            onboardingCompleted = false
         }
     }
     

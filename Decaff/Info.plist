@@ -2,11 +2,50 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key></key>
-	<string></string>
-	<key>NUTRITIONIX_API_KEY</key>
-	<string> 19f46d54260ec8d4bb191674cdc59c12</string>
-	<key>NUTRITIONIX_APP_ID</key>
-	<string>680c7ca3</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>$(DEVELOPMENT_LANGUAGE)</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <string>armv7</string>
+    </array>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>NSHealthShareUsageDescription</key>
+    <string>We need access to your sleep data to provide personalized coffee recommendations based on your sleep patterns.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>We need permission to analyze your sleep data to help optimize your coffee consumption.</string>
+    <key>NUTRITIONIX_APP_ID</key>
+    <string>$(NUTRITIONIX_APP_ID)</string>
+    <key>NUTRITIONIX_APP_KEY</key>
+    <string>$(NUTRITIONIX_APP_KEY)</string>
+    <key>OPENAI_API_KEY</key>
+    <string>$(OPENAI_API_KEY)</string>
 </dict>
 </plist>

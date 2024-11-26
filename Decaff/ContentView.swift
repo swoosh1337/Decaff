@@ -8,42 +8,34 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
-    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
+    @Binding var isOnboarding: Bool
     
     var body: some View {
-        Group {
-            if !hasSeenOnboarding {
-                OnboardingView()
-            } else {
-                // Main app content
-                TabView {
-                    MainView()
-                        .tabItem {
-                            Label("Home", systemImage: "house.fill")
-                        }
-                    
-                    CalendarView()
-                        .tabItem {
-                            Label("Calendar", systemImage: "calendar")
-                        }
-                    
-                    AnalysisView()
-                        .tabItem {
-                            Label("Analysis", systemImage: "chart.bar.fill")
-                        }
-                    
-                    SettingsView()
-                        .tabItem {
-                            Label("Settings", systemImage: "gear")
-                        }
+        TabView {
+            MainView()
+                .tabItem {
+                    Label("Home", systemImage: "house.fill")
                 }
-            }
+            
+            CalendarView()
+                .tabItem {
+                    Label("Calendar", systemImage: "calendar")
+                }
+            
+            AnalysisView()
+                .tabItem {
+                    Label("Analysis", systemImage: "chart.bar.fill")
+                }
+            
+            SettingsView()
+                .tabItem {
+                    Label("Settings", systemImage: "gear")
+                }
         }
     }
 }
 
 #Preview {
-    ContentView()
-        .modelContainer(for: [CaffeineEntry.self], inMemory: true)
+    ContentView(isOnboarding: .constant(false))
+        .modelContainer(for: UserProfile.self)
 }
-

@@ -10,9 +10,12 @@ import SwiftData
 
 struct OnboardingView: View {
     @StateObject private var profileManager = UserProfileManager.shared
+    @Environment(\.presentationMode) var presentationMode
     @State private var currentPage = 0
     @State private var userName = ""
     @State private var showNameInput = false
+    @Binding var isOnboarding: Bool
+    @Environment(\.dismiss) private var dismiss
     
     private let pages = [
         OnboardingPage(
@@ -95,7 +98,13 @@ struct OnboardingView: View {
     }
     
     private func completeOnboarding() {
+        print("DEBUG: Completing onboarding with name: \(userName)")
         profileManager.completeOnboarding(name: userName)
+        print("DEBUG: Onboarding completed, profile state: \(String(describing: profileManager.currentProfile?.onboardingCompleted))")
+        withAnimation {
+            isOnboarding = false
+            presentationMode.wrappedValue.dismiss()
+        }
     }
     
     private func previousPage() {
@@ -111,6 +120,7 @@ struct NameInputView: View {
     @Binding var userName: String
     let onComplete: () -> Void
     @FocusState private var isNameFocused: Bool
+    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         VStack(spacing: 30) {
@@ -125,7 +135,9 @@ struct NameInputView: View {
             
             Button(action: {
                 if !userName.isEmpty {
-                    onComplete()
+                    withAnimation {
+                        onComplete()
+                    }
                 }
             }) {
                 Text("Get Started")
@@ -193,6 +205,6 @@ struct PageControl: View {
 
 #Preview {
     let previewManager = UserProfileManager.preview(isPremium: false)
-    return OnboardingView()
+    return OnboardingView(isOnboarding: .constant(true))
         .modelContainer(previewManager.modelContainer)
 }

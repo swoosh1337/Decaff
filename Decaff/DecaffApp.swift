@@ -11,14 +11,16 @@ import SwiftData
 @main
 struct DecaffApp: App {
     @StateObject private var profileManager = UserProfileManager.shared
+    @AppStorage("onboardingCompleted") private var onboardingCompleted = false
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             UserProfile.self,
             CaffeineEntry.self
         ])
+        
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
+        
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
@@ -28,15 +30,23 @@ struct DecaffApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
-                if let profile = profileManager.currentProfile {
-                    if profile.onboardingCompleted {
-                        ContentView()
-                    } else {
-                        OnboardingView()
+            ZStack {
+                if onboardingCompleted {
+                    ContentView(isOnboarding: Binding(
+                        get: { !onboardingCompleted },
+                        set: { onboardingCompleted = !$0 }
+                    ))
+                    .onAppear {
+                        print("DEBUG: Showing ContentView")
                     }
                 } else {
-                    OnboardingView()
+                    OnboardingView(isOnboarding: Binding(
+                        get: { !onboardingCompleted },
+                        set: { onboardingCompleted = !$0 }
+                    ))
+                    .onAppear {
+                        print("DEBUG: Showing OnboardingView")
+                    }
                 }
             }
             .modelContainer(sharedModelContainer)

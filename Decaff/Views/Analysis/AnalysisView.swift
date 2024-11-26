@@ -23,10 +23,6 @@ struct AnalysisView: View {
     @State private var showingError = false
     @State private var showingTestingMenu = false
     
-    // Mock data for testing
-    @State private var mockSleepData: [(Date, Double)] = []
-    @State private var mockCaffeineData: [(Date, Double)] = []
-    
     var body: some View {
         NavigationView {
             ScrollView {
@@ -61,35 +57,51 @@ struct AnalysisView: View {
                     }
                 }
             }
+            .onAppear {
+                // Load mock data immediately
+                sleepData = MockDataService.shared.generateMockSleepData(for: 7)
+                caffeineData = MockDataService.shared.generateMockCaffeineData(for: 7)
+                
+                // Trigger analysis with mock data
+                generateWeeklyAnalysis()
+            }
             .sheet(isPresented: $showingTestingMenu) {
                 TestingMenu(isPresented: $showingTestingMenu)
-            }
-            .alert("HealthKit Access", isPresented: $showingHealthKitPermission) {
-                Button("Settings") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Please enable HealthKit access in Settings to view sleep data analysis.")
             }
             .alert("Error", isPresented: $showingError) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(errorMessage ?? "An unknown error occurred")
             }
-            .task {
-                // Load mock data first as fallback
-                loadMockData()
+        }
+    }
+    
+    private func generateWeeklyAnalysis() {
+        Task {
+            do {
+                let startDate = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+                let endDate = Date()
                 
-                // Then try to fetch real data
-                await requestHealthKitPermission()
-                await fetchSleepData()
+                let recentEntries = caffeineEntries.filter { entry in
+                    Calendar.current.isDate(entry.timestamp, inSameDayAs: startDate) ||
+                    (entry.timestamp > startDate && entry.timestamp <= endDate)
+                }
                 
-                // Generate analysis if we have data
-                if !sleepData.isEmpty && !caffeineData.isEmpty {
-                    generateWeeklyAnalysis()
+                // Convert sleep data for GPT analysis
+                let sleepEntries = convertToSleepEntries(from: sleepData)
+                
+                let analysis = try await gptService.analyzeWeeklyData(
+                    caffeineEntries: recentEntries,
+                    sleepEntries: sleepEntries
+                )
+                
+                await MainActor.run {
+                    self.weeklyAnalysis = analysis
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "Error generating analysis: \(error.localizedDescription)"
+                    showingError = true
                 }
             }
         }
@@ -172,34 +184,6 @@ struct AnalysisView: View {
                 endDate: wakeTime,
                 value: Int(daily.totalHours * 3600) // Convert hours to seconds
             )
-        }
-    }
-    
-    private func generateWeeklyAnalysis() {
-        Task {
-            do {
-                let startDate = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-                let endDate = Date()
-                
-                let recentEntries = caffeineEntries.filter { entry in
-                    Calendar.current.isDate(entry.timestamp, inSameDayAs: startDate) ||
-                    (entry.timestamp > startDate && entry.timestamp <= endDate)
-                }
-                
-                let analysis = try await gptService.analyzeWeeklyData(
-                    caffeineEntries: recentEntries,
-                    sleepEntries: convertToSleepEntries(from: sleepData)
-                )
-                
-                await MainActor.run {
-                    self.weeklyAnalysis = analysis
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Error generating analysis: \(error.localizedDescription)"
-                    showingError = true
-                }
-            }
         }
     }
 }

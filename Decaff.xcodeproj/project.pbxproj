@@ -29,9 +29,22 @@
 		6D6751E72CDA52F100EAD071 /* DecaffUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DecaffUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		6D640E5D2CF68CED00D71D46 /* Exceptions for "Decaff" folder in "Decaff" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 6D6751CA2CDA52F000EAD071 /* Decaff */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		6D6751CD2CDA52F000EAD071 /* Decaff */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				6D640E5D2CF68CED00D71D46 /* Exceptions for "Decaff" folder in "Decaff" target */,
+			);
 			path = Decaff;
 			sourceTree = "<group>";
 		};
