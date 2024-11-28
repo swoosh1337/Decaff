@@ -61,9 +61,6 @@ struct AnalysisView: View {
                 // Load mock data immediately
                 sleepData = MockDataService.shared.generateMockSleepData(for: 7)
                 caffeineData = MockDataService.shared.generateMockCaffeineData(for: 7)
-                
-                // Trigger analysis with mock data
-                generateWeeklyAnalysis()
             }
             .sheet(isPresented: $showingTestingMenu) {
                 TestingMenu(isPresented: $showingTestingMenu)
@@ -90,7 +87,7 @@ struct AnalysisView: View {
                 // Convert sleep data for GPT analysis
                 let sleepEntries = convertToSleepEntries(from: sleepData)
                 
-                let analysis = try await gptService.analyzeWeeklyData(
+                let analysis = try await gptService.analyzeData(
                     caffeineEntries: recentEntries,
                     sleepEntries: sleepEntries
                 )
@@ -388,26 +385,6 @@ struct DailyAnalysisCard: View {
         .frame(width: 160)
         .background(Color(.secondarySystemBackground))
         .cornerRadius(10)
-    }
-}
-
-struct AnalysisSummaryView: View {
-    let analysis: WeeklyAnalysis
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("AI Analysis")
-                .font(.headline)
-            
-            Text(analysis.summary)
-                .font(.body)
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(radius: 2)
     }
 }
 

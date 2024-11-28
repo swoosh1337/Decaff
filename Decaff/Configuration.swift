@@ -44,6 +44,14 @@ enum API {
     }
     
     static var openAIKey: String {
-        Configuration.value(for: "OPENAI_API_KEY") ?? ""
+        guard let key = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String,
+              !key.isEmpty else {
+            print("Error: OPENAI_API_KEY is missing or empty in Info.plist")
+            print("Bundle path:", Bundle.main.bundlePath)
+            print("Info Dictionary:", Bundle.main.infoDictionary ?? [:])
+            print("Available keys:", Bundle.main.infoDictionary?.keys.joined(separator: ", ") ?? "")
+            fatalError("OPENAI_API_KEY not set in plist")
+        }
+        return key
     }
 }

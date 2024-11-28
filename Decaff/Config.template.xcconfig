@@ -1,0 +1,9 @@
+// Configuration settings file format documentation can be found at:
+// https://help.apple.com/xcode/#/dev745c5c974
+
+// OpenAI API Key
+OPENAI_API_KEY = your_openai_api_key_here
+
+// Nutritionix API Keys
+NUTRITIONIX_APP_ID = your_nutritionix_app_id
+NUTRITIONIX_APP_KEY = your_nutritionix_app_key

@@ -4,127 +4,133 @@ class GPTService: ObservableObject {
     static let shared = GPTService()
     
     private let baseURL = "https://api.openai.com/v1/chat/completions"
-    private var apiKey: String {
-        return API.openAIKey
-    }
+    private let dateFormatter: DateFormatter
     
     @Published var isAnalyzing = false
     
-    func analyzeWeeklyData(caffeineEntries: [CaffeineEntry], sleepEntries: [SleepEntry]) async throws -> WeeklyAnalysis {
+    private init() {
+        self.dateFormatter = DateFormatter()
+        self.dateFormatter.dateStyle = .medium
+        self.dateFormatter.timeStyle = .short
+    }
+    
+    func createAnalysisPrompt(caffeineEntries: [CaffeineEntry], sleepEntries: [SleepEntry]) -> String {
+        let formattedCaffeineEntries = caffeineEntries.map { entry in
+            "Caffeine: \(entry.caffeineAmount)mg at \(dateFormatter.string(from: entry.timestamp))"
+        }.joined(separator: "\n")
+        
+        let formattedSleepEntries = sleepEntries.map { entry in
+            "Sleep: \(entry.durationInHours) hours, quality: \(entry.value)/100, from \(dateFormatter.string(from: entry.startDate)) to \(dateFormatter.string(from: entry.endDate))"
+        }.joined(separator: "\n")
+        
+        return """
+        Analyze the following caffeine consumption and sleep data:
+        
+        \(formattedCaffeineEntries)
+        
+        \(formattedSleepEntries)
+        
+        Please provide:
+        1. A brief summary of the week
+        2. Three key insights about patterns and correlations
+        3. Three specific recommendations for improvement
+        4. Scores (0-100) for:
+           - Sleep quality
+           - Caffeine balance
+           - Overall wellness
+        
+        Format the response as JSON with the following structure:
+        {
+            "summary": "...",
+            "insights": ["...", "...", "..."],
+            "recommendations": ["...", "...", "..."],
+            "scores": {
+                "sleepQuality": X,
+                "caffeineBalance": Y,
+                "overall": Z
+            }
+        }
+        """
+    }
+    
+    func analyzeData(caffeineEntries: [CaffeineEntry], sleepEntries: [SleepEntry]) async throws -> WeeklyAnalysis {
         isAnalyzing = true
-        defer { isAnalyzing = false }
+        defer { 
+            Task { @MainActor in
+                self.isAnalyzing = false
+            }
+        }
+        
+        // Debug: Print API key (remove in production)
+        print("API Key being used:", API.openAIKey)
         
         let prompt = createAnalysisPrompt(caffeineEntries: caffeineEntries, sleepEntries: sleepEntries)
         
         var request = URLRequest(url: URL(string: baseURL)!)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.addValue("Bearer \(API.openAIKey)", forHTTPHeaderField: "Authorization")
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let body: [String: Any] = [
+        let requestBody: [String: Any] = [
             "model": "gpt-4",
             "messages": [
-                ["role": "system", "content": "You are an expert in analyzing caffeine consumption and sleep patterns. Provide insights in a clear, concise manner with specific recommendations."],
+                ["role": "system", "content": "You are an AI assistant analyzing caffeine consumption and sleep patterns. Please provide your response in JSON format with the following structure: {\"summary\": \"string\", \"insights\": [\"string\"], \"recommendations\": [\"string\"], \"scores\": {\"sleepQuality\": number, \"caffeineBalance\": number, \"overall\": number}}"],
                 ["role": "user", "content": prompt]
             ],
-            "temperature": 0.7,
-            "max_tokens": 1000
+            "temperature": 0.7
         ]
         
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        // Debug: Print request body (remove in production)
+        if let requestBodyString = String(data: request.httpBody!, encoding: .utf8) {
+            print("Request Body:", requestBodyString)
+        }
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw GPTError.apiError
+        let (data, httpResponse) = try await URLSession.shared.data(for: request)
+        
+        // Debug: Print response (remove in production)
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("Response:", responseString)
+        }
+        
+        if let httpResponse = httpResponse as? HTTPURLResponse {
+            print("HTTP Status Code:", httpResponse.statusCode)
+            print("Response Headers:", httpResponse.allHeaderFields)
         }
         
         let gptResponse = try JSONDecoder().decode(GPTResponse.self, from: data)
-        return parseGPTResponse(gptResponse.choices.first?.message.content ?? "")
-    }
-    
-    private func createAnalysisPrompt(caffeineEntries: [CaffeineEntry], sleepEntries: [SleepEntry]) -> String {
-        var prompt = "Analyze the following week of caffeine consumption and sleep data:\n\nCaffeine Consumption:\n"
         
-        // Format caffeine data
-        for entry in caffeineEntries {
-            prompt += "- \(entry.timestamp.formatted()): \(entry.beverageName) (\(Int(entry.caffeineAmount))mg)\n"
+        guard let content = gptResponse.choices.first?.message.content else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No response from GPT"])
         }
         
-        prompt += "\nSleep Data:\n"
-        // Format sleep data
-        for entry in sleepEntries {
-            prompt += "- \(entry.startDate.formatted()) to \(entry.endDate.formatted()): \(entry.durationInHours) hours\n"
-        }
-        
-        prompt += "\nPlease provide:\n1. Overall patterns\n2. Impact on sleep quality\n3. Specific recommendations\n4. Areas of concern\n5. Positive habits"
-        
-        return prompt
+        // Parse the GPT response into WeeklyAnalysis
+        return try parseGPTResponse(content)
     }
     
-    private func parseGPTResponse(_ response: String) -> WeeklyAnalysis {
-        // For now, return a simple analysis structure
-        // In the future, we could parse the response more intelligently
+    private func parseGPTResponse(_ content: String) throws -> WeeklyAnalysis {
+        guard let jsonData = content.data(using: .utf8),
+              let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+              let summary = json["summary"] as? String,
+              let insights = json["insights"] as? [String],
+              let recommendations = json["recommendations"] as? [String],
+              let scores = json["scores"] as? [String: Int] else {
+            throw NSError(domain: "GPTService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to parse GPT response"])
+        }
+        
         return WeeklyAnalysis(
-            summary: response,
-            date: Date()
+            summary: summary,
+            insights: insights,
+            recommendations: recommendations,
+            sleepQualityScore: scores["sleepQuality"] ?? 0,
+            caffeineBalanceScore: scores["caffeineBalance"] ?? 0,
+            overallScore: scores["overall"] ?? 0
         )
     }
-}
-
-enum GPTError: Error {
-    case apiError
-    case parsingError
-}
-
-struct GPTResponse: Decodable {
-    let choices: [Choice]
     
-    struct Choice: Decodable {
-        let message: Message
-    }
-    
-    struct Message: Decodable {
-        let content: String
-    }
-}
-
-struct WeeklyAnalysis: Identifiable {
-    let id = UUID()
-    let summary: String
-    let date: Date
-    
-    // Mock data for testing
-    static var mockData: WeeklyAnalysis {
-        WeeklyAnalysis(
-            summary: """
-            Overall Patterns:
-            - Average daily caffeine intake: 280mg
-            - Peak consumption: 10am-2pm
-            - Consistent morning coffee routine
-            
-            Impact on Sleep:
-            - Sleep latency increased on high caffeine days
-            - Average sleep duration: 7.2 hours
-            - Sleep quality affected by late afternoon consumption
-            
-            Recommendations:
-            1. Limit caffeine intake after 2pm
-            2. Consider reducing afternoon energy drink consumption
-            3. Maintain consistent morning routine
-            4. Stay hydrated throughout the day
-            
-            Areas of Concern:
-            - Late afternoon energy drinks may affect sleep
-            - Some days exceed recommended daily limit
-            
-            Positive Habits:
-            - Regular morning routine
-            - Good hydration with tea
-            - No caffeine before bedtime
-            """,
-            date: Date()
-        )
+    // For testing and preview purposes
+    func getMockAnalysis() -> WeeklyAnalysis {
+        return WeeklyAnalysis.mockData
     }
 }
