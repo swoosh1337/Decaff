@@ -21,11 +21,12 @@ struct CircularScoreView: View {
                 Text("\(score)")
                     .font(.title2)
                     .bold()
+                    .foregroundColor(.black)
             }
             
             Text(label)
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundColor(.black)
         }
     }
 }
@@ -42,7 +43,7 @@ struct AnalysisSummaryView: View {
                     .bold()
                 
                 Text(analysis.summary)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.primary)
                 
                 // Scores Section
                 HStack(spacing: 20) {
