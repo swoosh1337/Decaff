@@ -17,6 +17,30 @@ struct NutritionixProduct: Decodable, Identifiable {
     let nfCaffeine: Double?
     let photoURL: String?
     let upc: String?
+    let fullNutrients: [Nutrient]?
+    
+    var displayName: String {
+        let capitalizedFoodName = foodName.split(separator: " ")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
+            .joined(separator: " ")
+        
+        if let brand = brandName, !brand.isEmpty {
+            let capitalizedBrandName = brand.split(separator: " ")
+                .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
+                .joined(separator: " ")
+            return "\(capitalizedBrandName) \(capitalizedFoodName)"
+        }
+        return capitalizedFoodName
+    }
+    
+    var caffeine: Double? {
+        // Check nf_caffeine first
+        if let caffeine = nfCaffeine {
+            return caffeine
+        }
+        // If not found, check full_nutrients for attr_id 262 (caffeine)
+        return fullNutrients?.first(where: { $0.attrId == 262 })?.value
+    }
     
     enum CodingKeys: String, CodingKey {
         case foodName = "food_name"
@@ -26,26 +50,49 @@ struct NutritionixProduct: Decodable, Identifiable {
         case servingWeightGrams = "serving_weight_grams"
         case nfCaffeine = "nf_caffeine"
         case photoURL = "photo"
-        case full = "full"
         case upc
+        case fullNutrients = "full_nutrients"
+    }
+    
+    enum PhotoCodingKeys: String, CodingKey {
+        case thumb
+        case highres
     }
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         foodName = try container.decode(String.self, forKey: .foodName)
-        id = UUID().uuidString  // Generate a unique ID since we don't need to encode it back
+        id = UUID().uuidString
         brandName = try container.decodeIfPresent(String.self, forKey: .brandName)
         servingQuantity = try container.decode(Double.self, forKey: .servingQuantity)
         servingUnit = try container.decode(String.self, forKey: .servingUnit)
         servingWeightGrams = try container.decodeIfPresent(Double.self, forKey: .servingWeightGrams)
         nfCaffeine = try container.decodeIfPresent(Double.self, forKey: .nfCaffeine)
         upc = try container.decodeIfPresent(String.self, forKey: .upc)
+        fullNutrients = try container.decodeIfPresent([Nutrient].self, forKey: .fullNutrients)
         
-        if let photoContainer = try? container.nestedContainer(keyedBy: CodingKeys.self, forKey: .photoURL) {
-            photoURL = try photoContainer.decodeIfPresent(String.self, forKey: .full)
+        // Handle nested photo object
+        if let photoContainer = try? container.nestedContainer(keyedBy: PhotoCodingKeys.self, forKey: .photoURL) {
+            // Try highres first, fallback to thumb
+            if let highres = try? photoContainer.decodeIfPresent(String.self, forKey: .highres),
+               !highres.isEmpty {
+                photoURL = highres
+            } else {
+                photoURL = try? photoContainer.decodeIfPresent(String.self, forKey: .thumb)
+            }
         } else {
             photoURL = nil
         }
+    }
+}
+
+struct Nutrient: Decodable {
+    let attrId: Int
+    let value: Double
+    
+    enum CodingKeys: String, CodingKey {
+        case attrId = "attr_id"
+        case value
     }
 }
 
@@ -112,11 +159,22 @@ class NutritionixService {
         let queryItems = [URLQueryItem(name: "upc", value: upc)]
         request.url?.append(queryItems: queryItems)
         
+        // Debug logging
+        print("🔍 Searching UPC:", upc)
+        print("📡 Request URL:", request.url?.absoluteString ?? "nil")
+        print("🔑 Headers:", headers)
+        
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw NutritionixError.invalidResponse
+            }
+            
+            // Debug logging
+            print("📥 Response Status Code:", httpResponse.statusCode)
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("📄 Response Data:", responseString)
             }
             
             if httpResponse.statusCode == 404 {
@@ -136,8 +194,15 @@ class NutritionixService {
                 throw NutritionixError.productNotFound
             }
             
-            // Get detailed nutrient information
-            return try await getNutrientInfo(query: "\(product.brandName ?? "") \(product.foodName)")
+            // Check if caffeine content is present in the product
+            if product.nfCaffeine == nil {
+                // If no caffeine content, get detailed nutrient information
+                print("⚠️ No caffeine content found in UPC response, fetching detailed nutrients...")
+                return try await getNutrientInfo(query: "\(product.brandName ?? "") \(product.foodName)")
+            }
+            
+            // Return the product if it already has caffeine content
+            return product
         } catch {
             if let nutritionixError = error as? NutritionixError {
                 throw nutritionixError

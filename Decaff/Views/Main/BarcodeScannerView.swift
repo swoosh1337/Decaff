@@ -68,20 +68,20 @@ struct BarcodeScannerView: View {
     }
     
     private func addToLog(product: NutritionixProduct) {
-        guard let caffeineContent = product.nfCaffeine else { return }
+        guard let caffeineContent = product.caffeine else { return }
         
-        print("📝 Adding product to log: \(product.foodName)")
+        print("📝 Adding product to log: \(product.displayName)")
         
         let entry = CaffeineEntry(
             caffeineAmount: caffeineContent,
-            beverageName: product.brandName != nil ? "\(product.brandName!) \(product.foodName)" : product.foodName,
+            beverageName: product.displayName,
             beverageType: .custom,
             volume: product.servingQuantity
         )
         
         modelContext.insert(entry)
         try? modelContext.save()
-        print("✅ Entry added to log: \(product.foodName) with \(caffeineContent)mg caffeine")
+        print("✅ Entry added to log: \(product.displayName) with \(caffeineContent)mg caffeine")
     }
 }
 
@@ -150,31 +150,42 @@ struct ProductDetailSheet: View {
             VStack(spacing: 20) {
                 if let photoURL = product.photoURL,
                    let url = URL(string: photoURL) {
-                    AsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(height: 200)
-                    } placeholder: {
-                        ProgressView()
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .empty:
+                            ProgressView()
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 200)
+                                .cornerRadius(8)
+                                .shadow(radius: 4)
+                        case .failure(_):
+                            Image(systemName: "photo")
+                                .font(.system(size: 60))
+                                .foregroundColor(.gray)
+                        @unknown default:
+                            EmptyView()
+                        }
                     }
                     .padding()
+                } else {
+                    Image(systemName: "photo")
+                        .font(.system(size: 60))
+                        .foregroundColor(.gray)
+                        .padding()
                 }
                 
-                Text(product.foodName)
+                Text(product.displayName)
                     .font(.title2)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
                 
-                if let brand = product.brandName {
-                    Text(brand)
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                }
-                
                 Text("Serving: \(String(format: "%.1f", product.servingQuantity)) \(product.servingUnit)")
+                    .foregroundColor(.secondary)
                 
-                if let caffeine = product.nfCaffeine {
+                if let caffeine = product.caffeine {
                     Text("Caffeine: \(Int(caffeine))mg")
                         .font(.headline)
                         .foregroundColor(.accentColor)
@@ -187,7 +198,7 @@ struct ProductDetailSheet: View {
                 
                 VStack(spacing: 12) {
                     Button("Add to Log") {
-                        if product.nfCaffeine != nil {
+                        if product.caffeine != nil {
                             onAdd()
                         } else {
                             showCaffeineAlert = true
@@ -200,12 +211,12 @@ struct ProductDetailSheet: View {
                 }
                 .padding()
             }
-            .navigationBarHidden(true)
+            .navigationBarTitleDisplayMode(.inline)
         }
-        .alert("Missing Caffeine Content", isPresented: $showCaffeineAlert) {
+        .alert("No Caffeine Information", isPresented: $showCaffeineAlert) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text("This product doesn't have caffeine content information available.")
+            Text("Unable to add this product to your log because caffeine content information is not available.")
         }
     }
 }

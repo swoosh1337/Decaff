@@ -107,7 +107,7 @@ extension BarcodeScannerModel: AVCaptureMetadataOutputObjectsDelegate {
                     let product = try await NutritionixService.shared.searchByUPC(stringValue)
                     self.currentProduct = product
                     self.isLoading = false
-                    print("✅ Found product: \(product.foodName)")
+                    print("✅ Found product: \(product.displayName)")
                 } catch NutritionixError.productNotFound {
                     self.error = NSError(domain: "com.decaff", code: 404, userInfo: [
                         NSLocalizedDescriptionKey: "Product not found in database"
