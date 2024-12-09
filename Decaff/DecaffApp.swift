@@ -12,6 +12,7 @@ import SwiftData
 struct DecaffApp: App {
     @StateObject private var profileManager = UserProfileManager.shared
     @AppStorage("onboardingCompleted") private var onboardingCompleted = false
+    @State private var showingSplash = true
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -30,30 +31,41 @@ struct DecaffApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                if onboardingCompleted {
-                    ContentView(isOnboarding: Binding(
-                        get: { !onboardingCompleted },
-                        set: { onboardingCompleted = !$0 }
-                    ))
+            if showingSplash {
+                SplashScreen()
                     .onAppear {
-                        print("DEBUG: Showing ContentView")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            withAnimation {
+                                showingSplash = false
+                            }
+                        }
                     }
-                } else {
-                    OnboardingView(isOnboarding: Binding(
-                        get: { !onboardingCompleted },
-                        set: { onboardingCompleted = !$0 }
-                    ))
-                    .onAppear {
-                        print("DEBUG: Showing OnboardingView")
+            } else {
+                ZStack {
+                    if onboardingCompleted {
+                        ContentView(isOnboarding: Binding(
+                            get: { !onboardingCompleted },
+                            set: { onboardingCompleted = !$0 }
+                        ))
+                        .onAppear {
+                            print("DEBUG: Showing ContentView")
+                        }
+                    } else {
+                        OnboardingView(isOnboarding: Binding(
+                            get: { !onboardingCompleted },
+                            set: { onboardingCompleted = !$0 }
+                        ))
+                        .onAppear {
+                            print("DEBUG: Showing OnboardingView")
+                        }
                     }
                 }
-            }
-            .modelContainer(sharedModelContainer)
-            .onAppear {
-                profileManager.setModelContainer(sharedModelContainer)
-                if profileManager.currentProfile == nil {
-                    profileManager.createInitialProfile()
+                .modelContainer(sharedModelContainer)
+                .onAppear {
+                    profileManager.setModelContainer(sharedModelContainer)
+                    if profileManager.currentProfile == nil {
+                        profileManager.createInitialProfile()
+                    }
                 }
             }
         }

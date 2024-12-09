@@ -22,6 +22,23 @@ struct AnalysisView: View {
     @State private var errorMessage: String?
     @State private var showingError = false
     @State private var showingTestingMenu = false
+    @State private var lastAnalysisData: (caffeineCount: Int, sleepCount: Int)?
+    
+    private var canGenerateNewAnalysis: Bool {
+        guard !gptService.isAnalyzing else { return false }
+        
+        let currentCaffeineCount = caffeineEntries.count
+        let currentSleepCount = sleepData.count
+        
+        // Allow new analysis if:
+        // 1. No previous analysis exists, or
+        // 2. The data has changed since last analysis
+        if let last = lastAnalysisData {
+            return last.caffeineCount != currentCaffeineCount || 
+                   last.sleepCount != currentSleepCount
+        }
+        return true
+    }
     
     var body: some View {
         NavigationView {
@@ -39,13 +56,28 @@ struct AnalysisView: View {
                             .padding(.horizontal)
                     }
                     
-                    AIInsightsButton(
-                        isGeneratingInsights: gptService.isAnalyzing,
-                        action: generateWeeklyAnalysis
-                    )
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-                    .padding(.bottom, 24)
+                    if canGenerateNewAnalysis {
+                        Button(action: generateWeeklyAnalysis) {
+                            HStack {
+                                Image(systemName: "wand.and.stars")
+                                Text("Generate AI Analysis")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.accentColor)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                        }
+                        .disabled(gptService.isAnalyzing)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                        .padding(.bottom, 24)
+                    }
+                    
+                    if gptService.isAnalyzing {
+                        ProgressView("Analyzing data...")
+                            .padding()
+                    }
                 }
                 .padding(.vertical)
             }
@@ -94,11 +126,13 @@ struct AnalysisView: View {
                 
                 await MainActor.run {
                     self.weeklyAnalysis = analysis
+                    self.lastAnalysisData = (caffeineCount: recentEntries.count, sleepCount: sleepData.count)
                 }
             } catch {
                 await MainActor.run {
                     errorMessage = "Error generating analysis: \(error.localizedDescription)"
                     showingError = true
+                    lastAnalysisData = nil // Reset on error
                 }
             }
         }
