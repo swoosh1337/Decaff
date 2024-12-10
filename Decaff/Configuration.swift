@@ -37,7 +37,7 @@ enum API {
     
     static var nutritionixApiKey: String {
         do {
-            return try Configuration.value(for: "NUTRITIONIX_API_KEY")
+            return try Configuration.value(for: "NUTRITIONIX_APIKEY")
         } catch {
             fatalError("NUTRITIONIX_API_KEY not set in plist")
         }

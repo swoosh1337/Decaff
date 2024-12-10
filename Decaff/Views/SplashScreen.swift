@@ -6,18 +6,21 @@ struct SplashScreen: View {
     
     var body: some View {
         ZStack {
-            Color(hex: "F5E6D3") // Beige background color from the logo
+            Color("F5E6D3") // Beige background color
                 .ignoresSafeArea()
             
             VStack(spacing: 30) {
-                CoffeeLogoView()
+                Image(systemName: "cup.and.saucer.fill")
+                    .resizable()
+                    .scaledToFit()
                     .frame(width: 200, height: 200)
+                    .foregroundColor(Color("4A3728")) // Dark brown color
                     .scaleEffect(size)
                     .opacity(opacity)
                 
                 Text("Decaff")
                     .font(.system(size: 42, weight: .bold, design: .rounded))
-                    .foregroundColor(Color(hex: "4A3728")) // Dark brown color for text
+                    .foregroundColor(Color("4A3728"))
                     .opacity(opacity)
             }
         }

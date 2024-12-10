@@ -54,8 +54,10 @@ class GPTService: ObservableObject {
     }
     
     func analyzeData(caffeineEntries: [CaffeineEntry], sleepEntries: [SleepEntry]) async throws -> WeeklyAnalysis {
-        isAnalyzing = true
-        defer { 
+        await MainActor.run {
+            self.isAnalyzing = true
+        }
+        defer {
             Task { @MainActor in
                 self.isAnalyzing = false
             }
@@ -74,7 +76,7 @@ class GPTService: ObservableObject {
         let requestBody: [String: Any] = [
             "model": "gpt-4",
             "messages": [
-                ["role": "system", "content": "You are an AI assistant analyzing caffeine consumption and sleep patterns. Please provide your response in JSON format with the following structure: {\"summary\": \"string\", \"insights\": [\"string\"], \"recommendations\": [\"string\"], \"scores\": {\"sleepQuality\": number, \"caffeineBalance\": number, \"overall\": number}}"],
+                ["role": "system", "content": "You are a friendly and helpful AI assistant analyzing caffeine consumption and sleep patterns.In your respone address the user as your are talking to him/her.Please provide your response in JSON format with the following structure: {\"summary\": \"string\", \"insights\": [\"string\"], \"recommendations\": [\"string\"], \"scores\": {\"sleepQuality\": number, \"caffeineBalance\": number, \"overall\": number}}"],
                 ["role": "user", "content": prompt]
             ],
             "temperature": 0.7
