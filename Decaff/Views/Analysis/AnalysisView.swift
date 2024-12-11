@@ -90,9 +90,17 @@ struct AnalysisView: View {
                 }
             }
             .onAppear {
-                // Load mock data immediately
-                sleepData = MockDataService.shared.generateMockSleepData(for: 7)
-                caffeineData = MockDataService.shared.generateMockCaffeineData(for: 7)
+                Task {
+                    do {
+                        try await healthKitService.requestAuthorization()
+                        await fetchHealthData()
+                    } catch {
+                        await MainActor.run {
+                            errorMessage = "Error accessing HealthKit: \(error.localizedDescription)"
+                            showingError = true
+                        }
+                    }
+                }
             }
             .sheet(isPresented: $showingTestingMenu) {
                 TestingMenu(isPresented: $showingTestingMenu)
@@ -108,25 +116,41 @@ struct AnalysisView: View {
     private func generateWeeklyAnalysis() {
         Task {
             do {
-                let startDate = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+                let calendar = Calendar.current
+                let startDate = calendar.date(byAdding: .day, value: -7, to: Date()) ?? Date()
                 let endDate = Date()
                 
+                // Get caffeine entries for the past week
                 let recentEntries = caffeineEntries.filter { entry in
-                    Calendar.current.isDate(entry.timestamp, inSameDayAs: startDate) ||
-                    (entry.timestamp > startDate && entry.timestamp <= endDate)
+                    entry.timestamp >= startDate && entry.timestamp <= endDate
                 }
                 
-                // Convert sleep data for GPT analysis
-                let sleepEntries = convertToSleepEntries(from: sleepData)
+                // Get sleep entries
+                let sleepEntries = try await healthKitService.fetchSleepData(from: startDate, to: endDate)
+                
+                // Get daily metrics (steps and calories)
+                var dailyMetrics: [(date: Date, steps: Int, calories: Double)] = []
+                for dayOffset in 0...7 {
+                    guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: calendar.startOfDay(for: endDate)) else { continue }
+                    let steps = try await healthKitService.fetchSteps(for: date)
+                    let calories = try await healthKitService.fetchCalories(for: date)
+                    dailyMetrics.append((date: date, steps: steps, calories: calories))
+                }
+                
+                print("Analyzing data:")
+                print("- \(recentEntries.count) caffeine entries")
+                print("- \(sleepEntries.count) sleep entries")
+                print("- \(dailyMetrics.count) days of activity data")
                 
                 let analysis = try await gptService.analyzeData(
                     caffeineEntries: recentEntries,
-                    sleepEntries: sleepEntries
+                    sleepEntries: sleepEntries,
+                    dailyMetrics: dailyMetrics
                 )
                 
                 await MainActor.run {
                     self.weeklyAnalysis = analysis
-                    self.lastAnalysisData = (caffeineCount: recentEntries.count, sleepCount: sleepData.count)
+                    self.lastAnalysisData = (caffeineCount: recentEntries.count, sleepCount: sleepEntries.count)
                 }
             } catch {
                 await MainActor.run {
@@ -213,14 +237,94 @@ struct AnalysisView: View {
             return SleepEntry(
                 startDate: bedTime,
                 endDate: wakeTime,
-                value: Int(daily.totalHours * 3600) // Convert hours to seconds
+                value: Int(daily.totalHours * 3600), // Convert hours to seconds
+                heartRate: 0 // Default to 0 since we don't have heart rate in DailySleepData
             )
+        }
+    }
+    
+    private func fetchHealthData() async {
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfToday = calendar.startOfDay(for: now)
+        let startOfWeek = calendar.date(byAdding: .day, value: -7, to: startOfToday)!
+        
+        do {
+            // Fetch sleep data
+            let sleepEntries = try await healthKitService.fetchSleepData(from: startOfWeek, to: now)
+            
+            // Fetch steps and calories for each day
+            var dailyData: [(Date, Int, Double)] = []
+            var dailyCaffeineData: [DailyCaffeineData] = []
+            
+            for dayOffset in 0...7 {
+                let date = calendar.date(byAdding: .day, value: -dayOffset, to: startOfToday)!
+                let steps = try await healthKitService.fetchSteps(for: date)
+                let calories = try await healthKitService.fetchCalories(for: date)
+                dailyData.append((date, steps, calories))
+                
+                // Create caffeine data for each day (using entries from SwiftData)
+                let dayEntries = caffeineEntries.filter { entry in
+                    calendar.isDate(entry.timestamp, inSameDayAs: date)
+                }
+                
+                let totalAmount = dayEntries.reduce(0.0) { $0 + $1.caffeineAmount }
+                let lastIntake = dayEntries.max(by: { $0.timestamp < $1.timestamp })?.timestamp
+                
+                // Calculate estimated blood level at typical bedtime (23:00)
+                var estimatedBloodLevel: Double? = nil
+                if let lastIntakeTime = lastIntake,
+                   let bedtime = calendar.date(bySettingHour: 23, minute: 0, second: 0, of: date) {
+                    let hoursSinceLastIntake = calendar.dateComponents([.hour], from: lastIntakeTime, to: bedtime).hour ?? 0
+                    let halfLifeCycles = Double(hoursSinceLastIntake) / 5.0 // Caffeine half-life is about 5 hours
+                    estimatedBloodLevel = totalAmount * pow(0.5, halfLifeCycles)
+                }
+                
+                dailyCaffeineData.append(DailyCaffeineData(
+                    date: date,
+                    totalAmount: totalAmount,
+                    lastIntakeTime: lastIntake,
+                    lastIntakeAmount: dayEntries.last?.caffeineAmount,
+                    estimatedBloodLevelAtSleep: estimatedBloodLevel
+                ))
+            }
+            
+            // Print debug info
+            print("=== Health Data Analysis ===")
+            print("\nSleep Data:")
+            for sleep in sleepEntries {
+                print("Sleep Session: \(sleep.startDate) to \(sleep.endDate)")
+                print("Duration: \(sleep.durationInHours) hours")
+                print("Average Heart Rate: \(sleep.heartRate) BPM")
+            }
+            
+            print("\nDaily Activity:")
+            for (date, steps, calories) in dailyData {
+                print("\nDate: \(date)")
+                print("Steps: \(steps)")
+                print("Calories: \(Int(calories)) kcal")
+            }
+            
+            // Update the UI
+            await MainActor.run {
+                self.sleepData = convertToDailySleepData(from: sleepEntries)
+                self.caffeineData = dailyCaffeineData.sorted(by: { $0.date < $1.date })
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = "Error fetching health data: \(error.localizedDescription)"
+                showingError = true
+            }
         }
     }
 }
 
 struct WeeklyConsumptionChart: View {
     let caffeineData: [(Date, Double)]
+    
+    var formattedData: [(Date, Double)] {
+        caffeineData.sorted { $0.0 < $1.0 }
+    }
     
     var body: some View {
         VStack(alignment: .leading) {
@@ -234,7 +338,7 @@ struct WeeklyConsumptionChart: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Chart {
-                    ForEach(caffeineData, id: \.0) { date, amount in
+                    ForEach(formattedData, id: \.0) { date, amount in
                         BarMark(
                             x: .value("Day", date, unit: .day),
                             y: .value("Caffeine", amount)

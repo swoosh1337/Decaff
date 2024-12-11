@@ -35,6 +35,14 @@ final class CaffeineEntry: Identifiable {
         self.customBeverage = customBeverage
         self.volume = volume
     }
+    
+    func saveToHealthKit() async {
+        do {
+            try await HealthKitService.shared.saveCaffeineEntry(self)
+        } catch {
+            print("Error saving to HealthKit:", error.localizedDescription)
+        }
+    }
 }
 
 enum BeverageType: String, Codable {

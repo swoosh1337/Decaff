@@ -73,7 +73,12 @@ class TestingUtility {
                 of: date
             ) else { continue }
             
-            let sleepEntry = SleepEntry(startDate: startTime, endDate: endTime, value: Int.random(in: 60...100))
+            let sleepEntry = SleepEntry(
+                startDate: startTime,
+                endDate: endTime,
+                value: Int.random(in: 60...100),
+                heartRate: Double.random(in: 55...65)
+            )
             sleepEntries.append(sleepEntry)
         }
         

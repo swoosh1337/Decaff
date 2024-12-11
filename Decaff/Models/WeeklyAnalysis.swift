@@ -6,6 +6,7 @@ struct WeeklyAnalysis {
     let recommendations: [String]
     let sleepQualityScore: Int
     let caffeineBalanceScore: Int
+    let physicalActivityScore: Int
     let overallScore: Int
     
     static let empty = WeeklyAnalysis(
@@ -14,6 +15,7 @@ struct WeeklyAnalysis {
         recommendations: [],
         sleepQualityScore: 0,
         caffeineBalanceScore: 0,
+        physicalActivityScore: 0,
         overallScore: 0
     )
 }
@@ -47,6 +49,7 @@ extension WeeklyAnalysis {
             ],
             sleepQualityScore: 85,
             caffeineBalanceScore: 75,
+            physicalActivityScore: 70,
             overallScore: 80
         )
     }

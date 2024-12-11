@@ -1,16 +1,12 @@
 import Foundation
 
-struct SleepEntry: Identifiable {
-    let id = UUID()
+struct SleepEntry {
     let startDate: Date
     let endDate: Date
-    let value: Int  // Sleep quality value (0-100)
-    
-    var duration: TimeInterval {
-        endDate.timeIntervalSince(startDate)
-    }
+    let value: Int
+    let heartRate: Double
     
     var durationInHours: Double {
-        duration / 3600  // Convert seconds to hours
+        endDate.timeIntervalSince(startDate) / 3600
     }
 }

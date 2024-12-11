@@ -25,8 +25,8 @@
         <key>UIApplicationSupportsMultipleScenes</key>
         <false/>
     </dict>
-    <key>UILaunchScreen</key>
-    <dict/>
+    <key>UILaunchStoryboardName</key>
+    <string>LaunchScreen</string>
     <key>UIRequiredDeviceCapabilities</key>
     <array>
         <string>armv7</string>
@@ -47,5 +47,10 @@
     <string>$(NUTRITIONIX_APP_KEY)</string>
     <key>OPENAI_API_KEY</key>
     <string>$(OPENAI_API_KEY)</string>
+    <key>UILaunchScreen</key>
+    <dict>
+        <key>UIColorName</key>
+        <string>F5E6D3</string>
+    </dict>
 </dict>
 </plist>

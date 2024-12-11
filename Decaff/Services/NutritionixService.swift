@@ -107,10 +107,18 @@ class NutritionixService {
     private let baseURL = "https://trackapi.nutritionix.com/v2"
     
     private var headers: [String: String] {
-        [
-            "x-app-id": API.nutritionixAppId,
-            "x-app-key": API.nutritionixApiKey,
-            "x-remote-user-id": "0"  // 0 for development
+        let appId = API.nutritionixAppId
+        let appKey = API.nutritionixAppKey
+        
+        print("Debug - Using Nutritionix credentials:")
+        print("App ID:", appId)
+        print("App Key:", String(appKey.prefix(8)) + "...")
+        
+        return [
+            "x-app-id": appId,
+            "x-app-key": appKey,
+            "x-remote-user-id": "0",
+            "Content-Type": "application/json"
         ]
     }
     

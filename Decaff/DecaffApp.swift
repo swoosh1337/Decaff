@@ -29,6 +29,13 @@ struct DecaffApp: App {
         }
     }()
 
+    init() {
+        // Set the window background color to match launch screen
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            windowScene.windows.first?.backgroundColor = UIColor(named: "F5E6D3")
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             if showingSplash {

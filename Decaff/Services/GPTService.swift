@@ -14,29 +14,46 @@ class GPTService: ObservableObject {
         self.dateFormatter.timeStyle = .short
     }
     
-    func createAnalysisPrompt(caffeineEntries: [CaffeineEntry], sleepEntries: [SleepEntry]) -> String {
+    func createAnalysisPrompt(caffeineEntries: [CaffeineEntry], sleepEntries: [SleepEntry], dailyMetrics: [(date: Date, steps: Int, calories: Double)]) -> String {
         let formattedCaffeineEntries = caffeineEntries.map { entry in
             "Caffeine: \(entry.caffeineAmount)mg at \(dateFormatter.string(from: entry.timestamp))"
         }.joined(separator: "\n")
         
         let formattedSleepEntries = sleepEntries.map { entry in
-            "Sleep: \(entry.durationInHours) hours, quality: \(entry.value)/100, from \(dateFormatter.string(from: entry.startDate)) to \(dateFormatter.string(from: entry.endDate))"
+            "Sleep: \(entry.durationInHours) hours, heart rate: \(entry.heartRate) BPM, from \(dateFormatter.string(from: entry.startDate)) to \(dateFormatter.string(from: entry.endDate))"
+        }.joined(separator: "\n")
+        
+        let formattedDailyMetrics = dailyMetrics.map { metric in
+            "Activity on \(dateFormatter.string(from: metric.date)): Steps: \(metric.steps), Calories burned: \(Int(metric.calories)) kcal"
         }.joined(separator: "\n")
         
         return """
-        Analyze the following caffeine consumption and sleep data:
+        Analyze the following health data:
         
+        Caffeine Consumption:
         \(formattedCaffeineEntries)
         
+        Sleep Patterns:
         \(formattedSleepEntries)
         
+        Daily Activity:
+        \(formattedDailyMetrics)
+        
         Please provide:
-        1. A brief summary of the week
-        2. Three key insights about patterns and correlations
-        3. Three specific recommendations for improvement
+        1. A comprehensive summary of the week analyzing the relationship between:
+           - Caffeine consumption patterns
+           - Sleep quality and duration
+           - Physical activity levels
+           - Heart rate during sleep
+        2. Three key insights about patterns and correlations between caffeine, sleep, and activity
+        3. Three specific recommendations for improving:
+           - Caffeine consumption timing
+           - Sleep quality
+           - Overall daily activity
         4. Scores (0-100) for:
            - Sleep quality
            - Caffeine balance
+           - Physical activity
            - Overall wellness
         
         Format the response as JSON with the following structure:
@@ -47,13 +64,14 @@ class GPTService: ObservableObject {
             "scores": {
                 "sleepQuality": X,
                 "caffeineBalance": Y,
-                "overall": Z
+                "physicalActivity": Z,
+                "overall": W
             }
         }
         """
     }
     
-    func analyzeData(caffeineEntries: [CaffeineEntry], sleepEntries: [SleepEntry]) async throws -> WeeklyAnalysis {
+    func analyzeData(caffeineEntries: [CaffeineEntry], sleepEntries: [SleepEntry], dailyMetrics: [(date: Date, steps: Int, calories: Double)]) async throws -> WeeklyAnalysis {
         await MainActor.run {
             self.isAnalyzing = true
         }
@@ -64,9 +82,10 @@ class GPTService: ObservableObject {
         }
         
         // Debug: Print API key (remove in production)
-        print("API Key being used:", API.openAIKey)
+        print("API Key available:", !API.openAIKey.isEmpty)
+        print("API Key length:", API.openAIKey.count)
         
-        let prompt = createAnalysisPrompt(caffeineEntries: caffeineEntries, sleepEntries: sleepEntries)
+        let prompt = createAnalysisPrompt(caffeineEntries: caffeineEntries, sleepEntries: sleepEntries, dailyMetrics: dailyMetrics)
         
         var request = URLRequest(url: URL(string: baseURL)!)
         request.httpMethod = "POST"
@@ -118,7 +137,7 @@ class GPTService: ObservableObject {
               let insights = json["insights"] as? [String],
               let recommendations = json["recommendations"] as? [String],
               let scores = json["scores"] as? [String: Int] else {
-            throw NSError(domain: "GPTService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to parse GPT response"])
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid GPT response format"])
         }
         
         return WeeklyAnalysis(
@@ -127,6 +146,7 @@ class GPTService: ObservableObject {
             recommendations: recommendations,
             sleepQualityScore: scores["sleepQuality"] ?? 0,
             caffeineBalanceScore: scores["caffeineBalance"] ?? 0,
+            physicalActivityScore: scores["physicalActivity"] ?? 0,
             overallScore: scores["overall"] ?? 0
         )
     }
