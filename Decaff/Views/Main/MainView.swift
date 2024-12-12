@@ -87,7 +87,13 @@ struct MainView: View {
             beverageType: beverageType.type,
             volume: 250
         )
+        
         modelContext.insert(entry)
+        
+        Task {
+            await entry.saveToHealthKit()
+        }
+        
         do {
             try modelContext.save()
             print("✅ Quick added: \(beverageType.name) with \(beverageType.caffeineAmount)mg caffeine")

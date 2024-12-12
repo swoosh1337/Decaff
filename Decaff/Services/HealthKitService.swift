@@ -81,7 +81,7 @@ class HealthKitService: ObservableObject {
         // Include all sleep states
         let sleepPredicate = NSCompoundPredicate(orPredicateWithSubpredicates: [
             HKQuery.predicateForCategorySamples(with: .equalTo, value: HKCategoryValueSleepAnalysis.inBed.rawValue),
-            HKQuery.predicateForCategorySamples(with: .equalTo, value: HKCategoryValueSleepAnalysis.asleep.rawValue),
+            HKQuery.predicateForCategorySamples(with: .equalTo, value: HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue),
             HKQuery.predicateForCategorySamples(with: .equalTo, value: HKCategoryValueSleepAnalysis.asleepCore.rawValue),
             HKQuery.predicateForCategorySamples(with: .equalTo, value: HKCategoryValueSleepAnalysis.asleepDeep.rawValue),
             HKQuery.predicateForCategorySamples(with: .equalTo, value: HKCategoryValueSleepAnalysis.asleepREM.rawValue)
@@ -129,7 +129,7 @@ class HealthKitService: ObservableObject {
     private func mergeSleepSamples(_ samples: [HKCategorySample]) -> [HKCategorySample] {
         guard !samples.isEmpty else { return [] }
         
-        let calendar = Calendar.current
+        _ = Calendar.current
         var mergedSessions: [HKCategorySample] = []
         var currentSession = samples[0]
         

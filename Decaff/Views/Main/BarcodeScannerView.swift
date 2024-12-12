@@ -70,8 +70,6 @@ struct BarcodeScannerView: View {
     private func addToLog(product: NutritionixProduct) {
         guard let caffeineContent = product.caffeine else { return }
         
-        print("📝 Adding product to log: \(product.displayName)")
-        
         let entry = CaffeineEntry(
             caffeineAmount: caffeineContent,
             beverageName: product.displayName,
@@ -80,8 +78,12 @@ struct BarcodeScannerView: View {
         )
         
         modelContext.insert(entry)
+        
+        Task {
+            await entry.saveToHealthKit()
+        }
+        
         try? modelContext.save()
-        print("✅ Entry added to log: \(product.displayName) with \(caffeineContent)mg caffeine")
     }
 }
 

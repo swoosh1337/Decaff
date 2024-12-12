@@ -39,8 +39,9 @@ final class CaffeineEntry: Identifiable {
     func saveToHealthKit() async {
         do {
             try await HealthKitService.shared.saveCaffeineEntry(self)
+            print("Successfully saved caffeine entry to HealthKit")
         } catch {
-            print("Error saving to HealthKit:", error.localizedDescription)
+            print("Failed to save caffeine to HealthKit: \(error.localizedDescription)")
         }
     }
 }

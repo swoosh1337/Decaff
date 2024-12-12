@@ -33,7 +33,7 @@ enum Configuration {
         
         // Then try reading from Config.xcconfig
         if let configPath = Bundle.main.path(forResource: "Config", ofType: "xcconfig"),
-           let contents = try? String(contentsOfFile: configPath) {
+           let contents = try? String(contentsOfFile: configPath, encoding: .utf8) {
             let lines = contents.components(separatedBy: .newlines)
             for line in lines {
                 let parts = line.components(separatedBy: "=").map { $0.trimmingCharacters(in: .whitespaces) }
@@ -84,7 +84,7 @@ enum API {
         print("🔍 Current value for \(key):", Bundle.main.infoDictionary?[key] ?? "nil")
         
         if let configPath = Bundle.main.path(forResource: "Config", ofType: "xcconfig"),
-           let contents = try? String(contentsOfFile: configPath) {
+           let contents = try? String(contentsOfFile: configPath, encoding: .utf8) {
             print("📄 Config.xcconfig contents:")
             print(contents)
         }

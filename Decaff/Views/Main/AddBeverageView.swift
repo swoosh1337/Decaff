@@ -200,6 +200,11 @@ struct AddBeverageView: View {
         )
         
         modelContext.insert(entry)
+        
+        Task {
+            await entry.saveToHealthKit()
+        }
+        
         dismiss()
     }
 }
