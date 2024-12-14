@@ -7,6 +7,9 @@ class HealthKitService: ObservableObject {
     private let healthStore = HKHealthStore()
     private let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!
     private let caffeineType = HKObjectType.quantityType(forIdentifier: .dietaryCaffeine)!
+    private let stepsType = HKObjectType.quantityType(forIdentifier: .stepCount)!
+    private let caloriesType = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)!
+    private let heartRateType = HKObjectType.quantityType(forIdentifier: .heartRate)!
     
     @Published var isAuthorized = false
     
@@ -188,61 +191,73 @@ class HealthKitService: ObservableObject {
     }
     
     func fetchSteps(for date: Date) async throws -> Int {
-        let stepsType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
-        let predicate = HKQuery.predicateForSamples(
-            withStart: Calendar.current.startOfDay(for: date),
-            end: Calendar.current.startOfDay(for: date.addingTimeInterval(86400)),
-            options: .strictStartDate
-        )
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
         
-        let statistics = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<HKStatistics?, Error>) in
-            let query = HKStatisticsQuery(
-                quantityType: stepsType,
-                quantitySamplePredicate: predicate,
-                options: .cumulativeSum
-            ) { _, statistics, error in
+        let samples = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[HKQuantitySample], Error>) in
+            let predicate = HKQuery.predicateForSamples(
+                withStart: startOfDay,
+                end: endOfDay,
+                options: .strictStartDate
+            )
+            
+            let query = HKSampleQuery(
+                sampleType: stepsType,
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: nil
+            ) { _, samples, error in
                 if let error = error {
                     print("Error fetching steps: \(error.localizedDescription)")
                     continuation.resume(throwing: error)
                     return
                 }
-                continuation.resume(returning: statistics)
+                
+                continuation.resume(returning: samples as? [HKQuantitySample] ?? [])
             }
+            
             healthStore.execute(query)
         }
         
-        let steps = Int(statistics?.sumQuantity()?.doubleValue(for: HKUnit.count()) ?? 0)
-        print("Steps for \(date): \(steps)")
-        return steps
+        let totalSteps = samples.reduce(0.0) { $0 + $1.quantity.doubleValue(for: HKUnit.count()) }
+        print("Steps for \(date): \(Int(totalSteps))")
+        return Int(totalSteps)
     }
     
     func fetchCalories(for date: Date) async throws -> Double {
-        let caloriesType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned)!
-        let predicate = HKQuery.predicateForSamples(
-            withStart: Calendar.current.startOfDay(for: date),
-            end: Calendar.current.startOfDay(for: date.addingTimeInterval(86400)),
-            options: .strictStartDate
-        )
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
         
-        let statistics = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<HKStatistics?, Error>) in
-            let query = HKStatisticsQuery(
-                quantityType: caloriesType,
-                quantitySamplePredicate: predicate,
-                options: .cumulativeSum
-            ) { _, statistics, error in
+        let samples = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[HKQuantitySample], Error>) in
+            let predicate = HKQuery.predicateForSamples(
+                withStart: startOfDay,
+                end: endOfDay,
+                options: .strictStartDate
+            )
+            
+            let query = HKSampleQuery(
+                sampleType: caloriesType,
+                predicate: predicate,
+                limit: HKObjectQueryNoLimit,
+                sortDescriptors: nil
+            ) { _, samples, error in
                 if let error = error {
                     print("Error fetching calories: \(error.localizedDescription)")
                     continuation.resume(throwing: error)
                     return
                 }
-                continuation.resume(returning: statistics)
+                
+                continuation.resume(returning: samples as? [HKQuantitySample] ?? [])
             }
+            
             healthStore.execute(query)
         }
         
-        let calories = statistics?.sumQuantity()?.doubleValue(for: HKUnit.kilocalorie()) ?? 0
-        print("Calories for \(date): \(calories)")
-        return calories
+        let totalCalories = samples.reduce(0.0) { $0 + $1.quantity.doubleValue(for: HKUnit.kilocalorie()) }
+        print("Calories for \(date): \(totalCalories)")
+        return totalCalories
     }
 }
 

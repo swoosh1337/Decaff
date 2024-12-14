@@ -48,6 +48,7 @@ class UserProfileManager: ObservableObject {
     
     func completeOnboarding(name: String) {
         updateProfile { profile in
+            profile.name = name
             profile.onboardingCompleted = true
         }
         objectWillChange.send()

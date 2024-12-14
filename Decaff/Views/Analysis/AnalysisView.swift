@@ -118,15 +118,24 @@ struct AnalysisView: View {
                     entry.timestamp >= startDate && entry.timestamp <= endDate
                 }
                 
-                // Get sleep entries
-                let sleepEntries = try await healthKitService.fetchSleepData(from: startDate, to: endDate)
+                // Only proceed if we have caffeine data
+                guard !recentEntries.isEmpty else {
+                    await MainActor.run {
+                        errorMessage = "No caffeine data available for analysis"
+                        showingError = true
+                    }
+                    return
+                }
                 
-                // Get daily metrics (steps and calories)
+                // Try to get sleep data, but don't fail if unavailable
+                let sleepEntries = (try? await healthKitService.fetchSleepData(from: startDate, to: endDate)) ?? []
+                
+                // Try to get daily metrics, but don't fail if unavailable
                 var dailyMetrics: [(date: Date, steps: Int, calories: Double)] = []
                 for dayOffset in 0...7 {
                     guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: calendar.startOfDay(for: endDate)) else { continue }
-                    let steps = try await healthKitService.fetchSteps(for: date)
-                    let calories = try await healthKitService.fetchCalories(for: date)
+                    let steps = (try? await healthKitService.fetchSteps(for: date)) ?? 0
+                    let calories = (try? await healthKitService.fetchCalories(for: date)) ?? 0
                     dailyMetrics.append((date: date, steps: steps, calories: calories))
                 }
                 
@@ -243,8 +252,12 @@ struct AnalysisView: View {
         let startOfWeek = calendar.date(byAdding: .day, value: -7, to: startOfToday)!
         
         do {
+            // First request HealthKit authorization
+            try await healthKitService.requestAuthorization()
+            
             // Fetch sleep data
-            let sleepEntries = try await healthKitService.fetchSleepData(from: startOfWeek, to: now)
+            let sleepEntries = (try? await healthKitService.fetchSleepData(from: startOfWeek, to: now)) ?? []
+            print("Fetched \(sleepEntries.count) sleep entries")
             
             // Fetch steps and calories for each day
             var dailyData: [(Date, Int, Double)] = []
@@ -252,11 +265,13 @@ struct AnalysisView: View {
             
             for dayOffset in 0...7 {
                 let date = calendar.date(byAdding: .day, value: -dayOffset, to: startOfToday)!
-                let steps = try await healthKitService.fetchSteps(for: date)
-                let calories = try await healthKitService.fetchCalories(for: date)
+                
+                // Fetch activity data with fallback to 0
+                let steps = (try? await healthKitService.fetchSteps(for: date)) ?? 0
+                let calories = (try? await healthKitService.fetchCalories(for: date)) ?? 0
                 dailyData.append((date, steps, calories))
                 
-                // Create caffeine data for each day (using entries from SwiftData)
+                // Get caffeine data from SwiftData
                 let dayEntries = caffeineEntries.filter { entry in
                     calendar.isDate(entry.timestamp, inSameDayAs: date)
                 }
@@ -264,10 +279,16 @@ struct AnalysisView: View {
                 let totalAmount = dayEntries.reduce(0.0) { $0 + $1.caffeineAmount }
                 let lastIntake = dayEntries.max(by: { $0.timestamp < $1.timestamp })?.timestamp
                 
-                // Calculate estimated blood level at typical bedtime (23:00)
+                // Calculate bedtime caffeine level using user's bedtime setting
                 var estimatedBloodLevel: Double? = nil
                 if let lastIntakeTime = lastIntake,
-                   let bedtime = calendar.date(bySettingHour: 23, minute: 0, second: 0, of: date) {
+                   let userBedTime = UserProfileManager.shared.currentProfile?.bedTime,
+                   let bedtime = calendar.date(
+                    bySettingHour: calendar.component(.hour, from: userBedTime),
+                    minute: calendar.component(.minute, from: userBedTime),
+                    second: 0,
+                    of: date
+                   ) {
                     let hoursSinceLastIntake = calendar.dateComponents([.hour], from: lastIntakeTime, to: bedtime).hour ?? 0
                     let halfLifeCycles = Double(hoursSinceLastIntake) / 5.0 // Caffeine half-life is about 5 hours
                     estimatedBloodLevel = totalAmount * pow(0.5, halfLifeCycles)
@@ -280,22 +301,12 @@ struct AnalysisView: View {
                     lastIntakeAmount: dayEntries.last?.caffeineAmount,
                     estimatedBloodLevelAtSleep: estimatedBloodLevel
                 ))
-            }
-            
-            // Print debug info
-            print("=== Health Data Analysis ===")
-            print("\nSleep Data:")
-            for sleep in sleepEntries {
-                print("Sleep Session: \(sleep.startDate) to \(sleep.endDate)")
-                print("Duration: \(sleep.durationInHours) hours")
-                print("Average Heart Rate: \(sleep.heartRate) BPM")
-            }
-            
-            print("\nDaily Activity:")
-            for (date, steps, calories) in dailyData {
-                print("\nDate: \(date)")
-                print("Steps: \(steps)")
-                print("Calories: \(Int(calories)) kcal")
+                
+                print("Data for \(date):")
+                print("- Steps: \(steps)")
+                print("- Calories: \(calories)")
+                print("- Caffeine: \(totalAmount)mg")
+                print("- Bedtime Level: \(estimatedBloodLevel ?? 0)mg")
             }
             
             // Update the UI
@@ -304,6 +315,7 @@ struct AnalysisView: View {
                 self.caffeineData = dailyCaffeineData.sorted(by: { $0.date < $1.date })
             }
         } catch {
+            print("Error fetching health data: \(error.localizedDescription)")
             await MainActor.run {
                 errorMessage = "Error fetching health data: \(error.localizedDescription)"
                 showingError = true
@@ -567,13 +579,8 @@ struct EmptyDataView: View {
 }
 
 #Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: UserProfile.self, CaffeineEntry.self, configurations: config)
-    
-    // Add sample data
-    let profile = UserProfile(isPremium: true)
-    container.mainContext.insert(profile)
-    
-    return AnalysisView()
-        .modelContainer(container)
+    NavigationView {
+        AnalysisView()
+            .modelContainer(for: [UserProfile.self, CaffeineEntry.self])
+    }
 }

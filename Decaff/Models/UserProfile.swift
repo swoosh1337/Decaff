@@ -11,7 +11,7 @@ import SwiftData
 @Model
 final class UserProfile {
     var id: UUID
-    var isPremium: Bool
+    var name: String
     var bedTime: Date?
     var notificationsEnabled: Bool
     var notificationTime: Date?
@@ -19,14 +19,14 @@ final class UserProfile {
     
     init(
         id: UUID = UUID(),
-        isPremium: Bool = false,
+        name: String = "",
         bedTime: Date? = Calendar.current.date(bySettingHour: 23, minute: 0, second: 0, of: Date()),
         notificationsEnabled: Bool = false,
         notificationTime: Date? = Calendar.current.date(bySettingHour: 20, minute: 0, second: 0, of: Date()),
         onboardingCompleted: Bool = false
     ) {
         self.id = id
-        self.isPremium = isPremium
+        self.name = name
         self.bedTime = bedTime
         self.notificationsEnabled = notificationsEnabled
         self.notificationTime = notificationTime
