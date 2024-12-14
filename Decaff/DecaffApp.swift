@@ -11,8 +11,8 @@ import SwiftData
 @main
 struct DecaffApp: App {
     @StateObject private var profileManager = UserProfileManager.shared
-    @AppStorage("onboardingCompleted") private var onboardingCompleted = false
     @State private var showingSplash = true
+    @State private var showingOnboarding = false
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -41,38 +41,21 @@ struct DecaffApp: App {
             if showingSplash {
                 SplashScreen()
                     .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        // Show splash for 2 seconds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                             withAnimation {
                                 showingSplash = false
                             }
                         }
                     }
             } else {
-                ZStack {
-                    if onboardingCompleted {
-                        ContentView(isOnboarding: Binding(
-                            get: { !onboardingCompleted },
-                            set: { onboardingCompleted = !$0 }
-                        ))
-                        .onAppear {
-                            print("DEBUG: Showing ContentView")
-                        }
-                    } else {
-                        OnboardingView(isOnboarding: Binding(
-                            get: { !onboardingCompleted },
-                            set: { onboardingCompleted = !$0 }
-                        ))
-                        .onAppear {
-                            print("DEBUG: Showing OnboardingView")
-                        }
-                    }
-                }
-                .modelContainer(sharedModelContainer)
-                .onAppear {
-                    profileManager.setModelContainer(sharedModelContainer)
-                    if profileManager.currentProfile == nil {
-                        profileManager.createInitialProfile()
-                    }
+                if let profile = profileManager.currentProfile,
+                   profile.onboardingCompleted {
+                    ContentView(isOnboarding: $showingOnboarding)
+                        .modelContainer(sharedModelContainer)
+                } else {
+                    OnboardingView(isOnboarding: $showingOnboarding)
+                        .modelContainer(sharedModelContainer)
                 }
             }
         }
@@ -83,9 +66,5 @@ struct DecaffApp: App {
 extension DecaffApp {
     static func resetToOnboarding() {
         UserProfileManager.shared.resetProfile()
-    }
-    
-    static func togglePremium() {
-        UserProfileManager.shared.togglePremium()
     }
 }

@@ -11,31 +11,25 @@ import SwiftData
 @Model
 final class UserProfile {
     var id: UUID
-    var name: String
-    var onboardingCompleted: Bool
-    var trialStartDate: Date?
     var isPremium: Bool
-    var healthKitEnabled: Bool
+    var bedTime: Date?
     var notificationsEnabled: Bool
     var notificationTime: Date?
+    var onboardingCompleted: Bool
     
     init(
         id: UUID = UUID(),
-        name: String = "",
-        onboardingCompleted: Bool = false,
-        trialStartDate: Date? = nil,
         isPremium: Bool = false,
-        healthKitEnabled: Bool = false,
+        bedTime: Date? = Calendar.current.date(bySettingHour: 23, minute: 0, second: 0, of: Date()),
         notificationsEnabled: Bool = false,
-        notificationTime: Date? = nil
+        notificationTime: Date? = Calendar.current.date(bySettingHour: 20, minute: 0, second: 0, of: Date()),
+        onboardingCompleted: Bool = false
     ) {
         self.id = id
-        self.name = name
-        self.onboardingCompleted = onboardingCompleted
-        self.trialStartDate = trialStartDate
         self.isPremium = isPremium
-        self.healthKitEnabled = healthKitEnabled
+        self.bedTime = bedTime
         self.notificationsEnabled = notificationsEnabled
         self.notificationTime = notificationTime
+        self.onboardingCompleted = onboardingCompleted
     }
 }

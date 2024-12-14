@@ -82,13 +82,6 @@ struct AnalysisView: View {
                 .padding(.vertical)
             }
             .navigationTitle("Analysis")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showingTestingMenu.toggle() }) {
-                        Image(systemName: "gear")
-                    }
-                }
-            }
             .onAppear {
                 Task {
                     do {
@@ -380,6 +373,11 @@ struct SleepCorrelationView: View {
     let sleepData: [DailySleepData]
     let caffeineData: [DailyCaffeineData]
     
+    private var orderedData: [(DailySleepData, DailyCaffeineData)] {
+        Array(zip(sleepData, caffeineData))
+            .sorted { $0.0.date > $1.0.date }
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Sleep & Caffeine Analysis")
@@ -393,7 +391,7 @@ struct SleepCorrelationView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
-                        ForEach(Array(zip(sleepData, caffeineData)), id: \.0.date) { sleep, caffeine in
+                        ForEach(orderedData, id: \.0.date) { sleep, caffeine in
                             DailyAnalysisCard(sleep: sleep, caffeine: caffeine)
                         }
                     }

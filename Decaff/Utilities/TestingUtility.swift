@@ -105,16 +105,7 @@ struct TestingMenu: View {
     var body: some View {
         NavigationView {
             List {
-                Section("Premium Status") {
-                    Toggle("Premium User", isOn: Binding(
-                        get: { profileManager.currentProfile?.isPremium ?? false },
-                        set: { newValue in
-                            profileManager.updateProfile { profile in
-                                profile.isPremium = newValue
-                            }
-                        }
-                    ))
-                }
+                
                 
                 Section("Test Data") {
                     Button("Insert Mock Data") {

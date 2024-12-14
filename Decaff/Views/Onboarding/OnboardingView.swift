@@ -204,7 +204,6 @@ struct PageControl: View {
 }
 
 #Preview {
-    let previewManager = UserProfileManager.preview(isPremium: false)
-    return OnboardingView(isOnboarding: .constant(true))
-        .modelContainer(previewManager.modelContainer)
+    OnboardingView(isOnboarding: .constant(true))
+        .modelContainer(UserProfileManager.shared.modelContainer)
 }
