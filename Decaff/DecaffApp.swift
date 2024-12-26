@@ -10,6 +10,7 @@ import SwiftData
 
 @main
 struct DecaffApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var profileManager = UserProfileManager.shared
     @State private var showingSplash = true
     @State private var showingOnboarding = false

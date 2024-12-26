@@ -14,7 +14,7 @@ class GPTService: ObservableObject {
         self.dateFormatter.timeStyle = .short
     }
     
-    func createAnalysisPrompt(caffeineEntries: [CaffeineEntry], sleepEntries: [SleepEntry], dailyMetrics: [(date: Date, steps: Int, calories: Double)]) -> String {
+    func analyzeData(caffeineEntries: [CaffeineEntry], sleepEntries: [SleepEntry], dailyMetrics: [(date: Date, steps: Int, calories: Double)]) async throws -> WeeklyAnalysis {
         let formattedCaffeineEntries = caffeineEntries.map { entry in
             "Caffeine: \(entry.caffeineAmount)mg at \(dateFormatter.string(from: entry.timestamp))"
         }.joined(separator: "\n")
@@ -27,8 +27,19 @@ class GPTService: ObservableObject {
             "Activity on \(dateFormatter.string(from: metric.date)): Steps: \(metric.steps), Calories burned: \(Int(metric.calories)) kcal"
         }.joined(separator: "\n")
         
-        return """
-        Analyze the following health data:
+        await MainActor.run {
+            self.isAnalyzing = true
+        }
+        defer {
+            Task { @MainActor in
+                self.isAnalyzing = false
+            }
+        }
+        
+        let userName = await MainActor.run { UserProfileManager.shared.currentProfile?.name ?? "User" }
+        
+        let prompt = """
+        Analyze the following health data for \(userName):
         
         Caffeine Consumption:
         \(formattedCaffeineEntries)
@@ -39,13 +50,13 @@ class GPTService: ObservableObject {
         Daily Activity:
         \(formattedDailyMetrics)
         
-        Please provide:
-        1. A comprehensive summary of the week analyzing the relationship between:
+        Please provide a personalized analysis for \(userName):
+        1. A comprehensive summary analyzing the relationship between:
            - Caffeine consumption patterns
            - Sleep quality and duration
            - Physical activity levels
            - Heart rate during sleep
-        2. Three key insights about patterns and correlations between caffeine, sleep, and activity
+        2. Three key insights about patterns and correlations
         3. Three specific recommendations for improving:
            - Caffeine consumption timing
            - Sleep quality
@@ -55,37 +66,7 @@ class GPTService: ObservableObject {
            - Caffeine balance
            - Physical activity
            - Overall wellness
-        
-        Format the response as JSON with the following structure:
-        {
-            "summary": "...",
-            "insights": ["...", "...", "..."],
-            "recommendations": ["...", "...", "..."],
-            "scores": {
-                "sleepQuality": X,
-                "caffeineBalance": Y,
-                "physicalActivity": Z,
-                "overall": W
-            }
-        }
         """
-    }
-    
-    func analyzeData(caffeineEntries: [CaffeineEntry], sleepEntries: [SleepEntry], dailyMetrics: [(date: Date, steps: Int, calories: Double)]) async throws -> WeeklyAnalysis {
-        await MainActor.run {
-            self.isAnalyzing = true
-        }
-        defer {
-            Task { @MainActor in
-                self.isAnalyzing = false
-            }
-        }
-        
-        // Debug: Print API key (remove in production)
-        print("API Key available:", !API.openAIKey.isEmpty)
-        print("API Key length:", API.openAIKey.count)
-        
-        let prompt = createAnalysisPrompt(caffeineEntries: caffeineEntries, sleepEntries: sleepEntries, dailyMetrics: dailyMetrics)
         
         var request = URLRequest(url: URL(string: baseURL)!)
         request.httpMethod = "POST"
@@ -103,31 +84,61 @@ class GPTService: ObservableObject {
         
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
         
-        // Debug: Print request body (remove in production)
-        if let requestBodyString = String(data: request.httpBody!, encoding: .utf8) {
-            print("Request Body:", requestBodyString)
-        }
-        
-        let (data, httpResponse) = try await URLSession.shared.data(for: request)
-        
-        // Debug: Print response (remove in production)
-        if let responseString = String(data: data, encoding: .utf8) {
-            print("Response:", responseString)
-        }
-        
-        if let httpResponse = httpResponse as? HTTPURLResponse {
-            print("HTTP Status Code:", httpResponse.statusCode)
-            print("Response Headers:", httpResponse.allHeaderFields)
-        }
-        
+        let (data, _) = try await URLSession.shared.data(for: request)
         let gptResponse = try JSONDecoder().decode(GPTResponse.self, from: data)
         
         guard let content = gptResponse.choices.first?.message.content else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No response from GPT"])
         }
         
-        // Parse the GPT response into WeeklyAnalysis
         return try parseGPTResponse(content)
+    }
+    
+    func generateDailySummary(caffeineEntries: [CaffeineEntry]) async throws -> String {
+        let userName = await MainActor.run { UserProfileManager.shared.currentProfile?.name ?? "User" }
+        let totalCaffeine = caffeineEntries.reduce(0.0) { $0 + $1.caffeineAmount }
+        let lastIntake = caffeineEntries.max(by: { $0.timestamp < $1.timestamp })
+        
+        let timeFormatter = Date.FormatStyle().hour().minute()
+        let lastIntakeTime = lastIntake?.timestamp.formatted(timeFormatter) ?? "None"
+        
+        let prompt = """
+        Generate a brief, friendly daily caffeine summary for \(userName).
+        
+        Today's data:
+        - Total caffeine: \(Int(totalCaffeine))mg
+        - Number of drinks: \(caffeineEntries.count)
+        - Last intake: \(lastIntakeTime)
+        
+        Please provide a concise, personalized summary (max 150 characters) that includes:
+        1. Total caffeine intake
+        2. Comparison to daily recommended limit (400mg)
+        3. A friendly tip or observation
+        
+        Make it conversational and friendly.
+        """
+        
+        var request = URLRequest(url: URL(string: baseURL)!)
+        request.httpMethod = "POST"
+        request.addValue("Bearer \(API.openAIKey)", forHTTPHeaderField: "Authorization")
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let requestBody: [String: Any] = [
+            "model": "gpt-4",
+            "messages": [
+                ["role": "system", "content": "You are a friendly assistant providing brief, personalized caffeine consumption summaries."],
+                ["role": "user", "content": prompt]
+            ],
+            "temperature": 0.7,
+            "max_tokens": 100
+        ]
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+        
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try JSONDecoder().decode(GPTResponse.self, from: data)
+        
+        return response.choices.first?.message.content ?? "Unable to generate summary"
     }
     
     private func parseGPTResponse(_ content: String) throws -> WeeklyAnalysis {

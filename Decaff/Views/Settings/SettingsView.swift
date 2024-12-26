@@ -8,9 +8,11 @@
 import SwiftUI
 import SwiftData
 import UserNotifications
+import BackgroundTasks
 
 struct SettingsView: View {
     @Query private var userProfile: [UserProfile]
+    @Query(sort: \CaffeineEntry.timestamp) private var caffeineEntries: [CaffeineEntry]
     @Environment(\.modelContext) private var modelContext
     
     // State for binding to profile values
@@ -84,18 +86,36 @@ struct SettingsView: View {
     }
     
     private func scheduleNotification() {
-        let content = UNMutableNotificationContent()
-        content.title = "Daily Caffeine Summary"
+        // Request notification permission if needed
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
+            if granted {
+                print("Notification permission granted")
+            } else if let error = error {
+                print("Error requesting notification permission: \(error)")
+            }
+        }
         
-        // Generate summary using GPT
         Task {
             do {
-                let summary = try await generateDailySummary()
+                // Get today's entries
+                let calendar = Calendar.current
+                let startOfDay = calendar.startOfDay(for: Date())
+                let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+                
+                let todayEntries = caffeineEntries.filter { entry in
+                    entry.timestamp >= startOfDay && entry.timestamp < endOfDay
+                }
+                
+                // Generate summary using GPT
+                let summary = try await GPTService.shared.generateDailySummary(caffeineEntries: todayEntries)
+                
+                // Create notification content
+                let content = UNMutableNotificationContent()
+                content.title = "Daily Caffeine Summary"
                 content.body = summary
                 
-                let calendar = Calendar.current
+                // Schedule notification
                 let components = calendar.dateComponents([.hour, .minute], from: notificationTime)
-                
                 let trigger = UNCalendarNotificationTrigger(
                     dateMatching: components,
                     repeats: true
@@ -108,6 +128,13 @@ struct SettingsView: View {
                 )
                 
                 try await UNUserNotificationCenter.current().add(request)
+                print("Daily summary notification scheduled for \(notificationTime)")
+                
+                // Schedule the background refresh
+                let taskRequest = BGAppRefreshTaskRequest(identifier: "com.decaff.dailySummary")
+                taskRequest.earliestBeginDate = calendar.date(byAdding: .day, value: 1, to: Date())
+                try BGTaskScheduler.shared.submit(taskRequest)
+                
             } catch {
                 print("Failed to schedule notification: \(error)")
             }

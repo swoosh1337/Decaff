@@ -52,5 +52,7 @@
         <key>UIColorName</key>
         <string>F5E6D3</string>
     </dict>
+    <key>NSCameraUsageDescription</key>
+    <string>We need access to your camera to scan beverage barcodes.</string>
 </dict>
 </plist>
