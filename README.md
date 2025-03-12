@@ -1,4 +1,4 @@
-Check out StraySync in action:
+Check out Decaff in action:
 <table>
   <tr>
     <td><img src="https://github.com/swoosh1337/Decaff/blob/bd04e5fa0a6f7969b1b72a5ded653a0952951936/screen1.png" width="250" alt="Map Screen"></td>
